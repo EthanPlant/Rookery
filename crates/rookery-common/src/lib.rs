@@ -10,6 +10,7 @@
 //!
 //! Hardware-specific behaviour, including CPU execution, memory mapping, and peripheral emulation, belongs in
 //! the respective machine crates.
+#![warn(missing_docs)]
 
 /// Cartridge ROM loading, header parsing, and platform detection.
 pub mod rom;
@@ -121,8 +122,11 @@ pub enum MachineKind {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct Rgb {
+    /// Red channel intensity.
     pub r: u8,
+    /// Green channel intensity.
     pub g: u8,
+    /// Blue channel intensity.
     pub b: u8,
 }
 
@@ -203,17 +207,26 @@ impl Framebuffer {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Button {
+    /// Right directional button.
     Right = 0,
+    /// Left directional button.
     Left = 1,
+    /// Up directional button.
     Up = 2,
+    /// Down directional button.
     Down = 3,
+    /// A action button.
     A = 4,
+    /// B action buutton.
     B = 5,
+    /// SELECT button.
     Select = 6,
+    /// START button.
     Start = 7,
 
-    // AGB-specific
+    /// Left shoulder button, only present on AGB hardware.
     L = 8,
+    /// Right shoulder button, only present on AGB hardware.
     R = 9,
 }
 
@@ -293,7 +306,9 @@ pub enum AudioError {
 /// two successive sample frames.
 #[derive(Debug, Default, Clone, Copy, PartialEq)]
 pub struct StereoSample {
+    /// Left audio channel amplitude.
     pub left: f32,
+    /// Right audio channel amplitude.
     pub right: f32,
 }
 
