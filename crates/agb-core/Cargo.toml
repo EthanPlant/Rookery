@@ -1,0 +1,12 @@
+[package]
+name = "agb-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rookery-common = { path = "../rookery-common" }
+arm7tdmi = { path = "../arm7tdmi" }
+
+thiserror.workspace = true
+tracing.workspace = true

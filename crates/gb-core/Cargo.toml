@@ -1,0 +1,12 @@
+[package]
+name = "gb-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+rookery-common = { path = "../rookery-common" }
+sm83 = { path = "../sm83" }
+
+thiserror.workspace = true
+tracing.workspace = true

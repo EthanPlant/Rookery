@@ -1,0 +1,20 @@
+[package]
+name = "rookery-desktop"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "rookery"
+path = "src/main.rs"
+
+[dependencies]
+rookery-common = { path = "../rookery-common" }
+gb-core = { path = "../gb-core" }
+agb-core = { path = "../agb-core" }
+rookery-test = { path = "../rookery-test" }
+
+anyhow.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
