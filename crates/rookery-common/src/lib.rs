@@ -11,6 +11,9 @@
 //! Hardware-specific behaviour, including CPU execution, memory mapping, and peripheral emulation, belongs in
 //! the respective machine crates.
 
+/// Cartridge ROM loading, header parsing, and platform detection.
+pub mod rom;
+
 use thiserror::Error;
 
 /// Common frontend-facing interface for an emulated machine.
@@ -308,7 +311,7 @@ pub struct AudioBuffer {
 impl AudioBuffer {
     /// Creates an empty audio buffer with the specified sample rate.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Returns [`AudioError::ZeroSampleRate`] if the sample rate is zero.
     pub fn new(sample_rate: u32) -> Result<Self, AudioError> {
@@ -385,7 +388,7 @@ impl VirtualClock {
     ///
     /// This method does no perform emulation or advance any hardware components.
     ///
-    /// ## Errors
+    /// # Errors
     ///
     /// Returns [`ClockError::Overflow`] if the resulting counter would exceed `u64::MAX`.
     /// On failure, the counter remains unchanged.
