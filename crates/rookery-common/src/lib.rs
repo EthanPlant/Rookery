@@ -13,6 +13,8 @@
 
 /// Cartridge ROM loading, header parsing, and platform detection.
 pub mod rom;
+/// Instruction tracing interfaces and diagnostic output formats.
+pub mod trace;
 
 use thiserror::Error;
 

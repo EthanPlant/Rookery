@@ -131,7 +131,7 @@ impl Rom {
     /// # Examples
     ///
     /// ```no_run
-    /// use handheld_common::rom::Rom;
+    /// use rookery_common::rom::Rom;
     ///
     /// let rom = Rom::load("game.gb")?;
     ///
@@ -209,17 +209,17 @@ impl Rom {
     /// # Examples
     ///
     /// ```no_run
-    /// use handheld_common::Platform;
-    /// use handheld_common::rom::Rom;
+    /// use rookery_common::Platform;
+    /// use rookery_common::rom::Rom;
     ///
     /// let bytes = std::fs::read("game.gba")?;
     ///
     /// let rom = Rom::from_bytes(
     ///     bytes,
-    ///     Some(Platform::Gba),
+    ///     Some(Platform::Agb),
     /// )?;
     ///
-    /// assert_eq!(rom.platform(), Platform::Gba);
+    /// assert_eq!(rom.platform(), Platform::Agb);
     ///
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
