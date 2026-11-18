@@ -118,14 +118,19 @@
 
 #![warn(missing_docs)]
 
+/// Game Boy memory bus and address mapping.
+pub mod bus;
+
 use rookery_common::{
     AudioBuffer, Buttons, ClockError, Framebuffer, Machine, MachineKind, StereoSample,
     VirtualClock,
     rom::{CgbSupport, Rom, RomHeader},
 };
-use sm83::Sm83;
+use sm83::{CpuError, Registers, Sm83, StepResult};
 use thiserror::Error;
 use tracing::info;
+
+use crate::bus::GbBus;
 
 /// Native Game Boy display width, in pixels.
 pub const SCREEN_WIDTH: usize = 160;
@@ -248,6 +253,18 @@ pub enum GameBoyError {
     CgbRequired,
 }
 
+/// Error that may occur while executing a Game Boy instruction.
+#[derive(Debug, Error)]
+pub enum GameBoyStepError {
+    /// The SM83 CPU encountered an execution error.
+    #[error(transparent)]
+    Cpu(#[from] CpuError),
+
+    /// The virtual clock could not be advanced
+    #[error(transparent)]
+    Clock(#[from] ClockError),
+}
+
 /// An emulated Game Boy or Game Boy Color machine.
 ///
 /// This structure owns the state associated with a
@@ -290,8 +307,8 @@ pub enum GameBoyError {
 #[derive(Debug)]
 pub struct GameBoy {
     model: GameBoyModel,
-    rom: Rom,
     cpu: Sm83,
+    bus: GbBus,
 
     framebuffer: Framebuffer,
     buttons: Buttons,
@@ -362,6 +379,11 @@ impl GameBoy {
             return Err(GameBoyError::CgbRequired);
         }
 
+        let cpu = Sm83::with_registers(Registers {
+            pc: 0x0100,
+            ..Registers::default()
+        });
+
         info!(
             ?model,
             title = %&header.title,
@@ -371,14 +393,33 @@ impl GameBoy {
 
         Ok(Self {
             model,
-            rom,
-            cpu: Sm83::new(),
+            bus: GbBus::new(rom),
+            cpu,
 
             framebuffer: Framebuffer::new(SCREEN_WIDTH, SCREEN_HEIGHT),
             buttons: Buttons::default(),
             audio: AudioBuffer::new(48_000).expect("Sample rate is non-zero"),
             clock: VirtualClock::default(),
         })
+    }
+
+    /// Executes on CPU instruction and advances the machine's virtual clock.
+    ///
+    /// The clock is advanced by the T-cycle count reported by the CPU.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`GameBoyStepError::Cpu`] if instruction execution fails.
+    ///
+    /// Returns [`GameBoyStepError::Clock`] if the virtual clock overflows.
+    /// In that case, the instruction has already executed and its effects are not
+    /// rolled back.
+    pub fn step_instruction(&mut self) -> Result<StepResult, GameBoyStepError> {
+        let result = self.cpu.step_with_trace(&mut self.bus)?;
+
+        self.clock.advance(u64::from(result.cycles))?;
+
+        Ok(result)
     }
 
     /// Returns the hardware model of this Game Boy.
@@ -431,7 +472,7 @@ impl GameBoy {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn rom(&self) -> &Rom {
-        &self.rom
+        self.bus.cartridge()
     }
 
     /// Returns an immutable reference to the SM83 CPU.
@@ -459,6 +500,11 @@ impl GameBoy {
     /// ```
     pub fn cpu(&self) -> &Sm83 {
         &self.cpu
+    }
+
+    /// Returns a reference to the Game Boy memory bus.
+    pub fn bus(&self) -> &GbBus {
+        &self.bus
     }
 }
 
@@ -543,5 +589,40 @@ mod tests {
         gb.advance_clock_only(1024).unwrap();
 
         assert_eq!(gb.virtual_clock(), 1024);
+    }
+
+    #[test]
+    fn executes_instructions_from_cartridge_rom() {
+        let mut bytes = vec![0; 0x8000];
+
+        // NOP
+        bytes[0x0100] = 0x00;
+
+        let rom = Rom::from_bytes(bytes, Some(Platform::Gb)).unwrap();
+
+        let mut gb = GameBoy::new(rom, GameBoyModel::Dmg).unwrap();
+
+        let first = gb.step_instruction().unwrap();
+
+        assert_eq!(first.cycles, 4);
+        assert_eq!(gb.cpu().registers().pc, 0x0101);
+        assert_eq!(gb.virtual_clock(), 4);
+    }
+
+    #[test]
+    fn cpu_errors_do_not_advance_virtual_clock() {
+        let mut bytes = vec![0; 0x8000];
+
+        // Illegal SM83 opcode.
+        bytes[0x0100] = 0xD3;
+
+        let rom = Rom::from_bytes(bytes, Some(Platform::Gb)).unwrap();
+
+        let mut gb = GameBoy::new(rom, GameBoyModel::Dmg).unwrap();
+
+        assert!(gb.step_instruction().is_err());
+
+        assert_eq!(gb.virtual_clock(), 0);
+        assert_eq!(gb.cpu().registers().pc, 0x0100);
     }
 }
