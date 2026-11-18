@@ -366,7 +366,9 @@ pub enum RomError {
     /// one platform but its header identifies another.
     #[error("file extension suggests {expected:?} but header identifies {actual:?}")]
     PlatformMismatch {
+        /// The expected platform based on the file extension.
         expected: Platform,
+        /// The platform determined by the header.
         actual: Platform,
     },
 
@@ -380,8 +382,11 @@ pub enum RomError {
     /// truncated or inconsistent with its declared ROM size.
     #[error("{platform:?} ROM too small: expected at least {minimum} bytes, got {actual}")]
     TooSmall {
+        /// The platform this ROM is for.
         platform: Platform,
+        /// The minimum possible ROM size (i.e. the length of the header).
         minimum: usize,
+        /// The actual size of the ROM file, in bytes.
         actual: usize,
     },
 }
@@ -728,7 +733,9 @@ impl AgbHeader {
 /// without depending on the corresponding emulation core.
 #[derive(Debug, Clone)]
 pub enum RomHeader {
+    /// Game Boy or Game Boy Color ROM header.
     Gb(GbHeader),
+    /// Game Boy Advance ROM header.
     Agb(AgbHeader),
 }
 
