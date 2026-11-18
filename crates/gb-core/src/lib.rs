@@ -170,7 +170,7 @@ pub const CLOCK_HZ: u32 = 4_194_304;
 ///
 /// This constant describes LCD timing and remains
 /// unchanged during CGB double-speed CPU execution.
-pub const CLOCKS_PER_FRAME: u64 = 465 * 154;
+pub const CLOCKS_PER_FRAME: u64 = 456 * 154;
 
 /// Selects the Game Boy hardware model to emulate.
 ///
