@@ -261,6 +261,7 @@ dependencies = [
  "gb-core",
  "rookery-common",
  "rookery-test",
+ "sm83",
  "tracing",
  "tracing-subscriber",
 ]

@@ -128,7 +128,6 @@ use rookery_common::{
 };
 use sm83::{CpuError, Registers, Sm83, StepResult};
 use thiserror::Error;
-use tracing::info;
 
 use crate::bus::GbBus;
 
@@ -371,36 +370,12 @@ impl GameBoy {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn new(rom: Rom, model: GameBoyModel) -> Result<Self, GameBoyError> {
-        let RomHeader::Gb(header) = rom.header() else {
-            return Err(GameBoyError::WrongPlatform);
-        };
+        Self::construct(rom, model, None)
+    }
 
-        if model == GameBoyModel::Dmg && header.color_support == CgbSupport::CgbOnly {
-            return Err(GameBoyError::CgbRequired);
-        }
-
-        let cpu = Sm83::with_registers(Registers {
-            pc: 0x0100,
-            ..Registers::default()
-        });
-
-        info!(
-            ?model,
-            title = %&header.title,
-            cartridge_type = header.cartridge_type,
-            "initializing Game Boy"
-        );
-
-        Ok(Self {
-            model,
-            bus: GbBus::new(rom),
-            cpu,
-
-            framebuffer: Framebuffer::new(SCREEN_WIDTH, SCREEN_HEIGHT),
-            buttons: Buttons::default(),
-            audio: AudioBuffer::new(48_000).expect("Sample rate is non-zero"),
-            clock: VirtualClock::default(),
-        })
+    /// Constructs a Game Boy machine with the provided DMG boot ROM.
+    pub fn with_dmg_boot_rom(rom: Rom, boot_rom: [u8; 0x100]) -> Result<Self, GameBoyError> {
+        Self::construct(rom, GameBoyModel::Dmg, Some(boot_rom))
     }
 
     /// Executes on CPU instruction and advances the machine's virtual clock.
@@ -505,6 +480,43 @@ impl GameBoy {
     /// Returns a reference to the Game Boy memory bus.
     pub fn bus(&self) -> &GbBus {
         &self.bus
+    }
+
+    fn construct(
+        rom: Rom,
+        model: GameBoyModel,
+        boot_rom: Option<[u8; 0x100]>,
+    ) -> Result<Self, GameBoyError> {
+        let RomHeader::Gb(header) = rom.header() else {
+            return Err(GameBoyError::WrongPlatform);
+        };
+
+        if model == GameBoyModel::Dmg && header.color_support == CgbSupport::CgbOnly {
+            return Err(GameBoyError::CgbRequired);
+        }
+
+        let booting = boot_rom.is_some();
+
+        let bus = match boot_rom {
+            Some(bytes) => GbBus::with_boot_rom(rom, bytes),
+            None => GbBus::new(rom),
+        };
+
+        let cpu = Sm83::with_registers(Registers {
+            pc: if booting { 0x0000 } else { 0x0100 },
+            ..Registers::default()
+        });
+
+        Ok(Self {
+            model,
+            cpu,
+            bus,
+
+            framebuffer: Framebuffer::new(SCREEN_WIDTH, SCREEN_HEIGHT),
+            buttons: Buttons::default(),
+            audio: AudioBuffer::new(48_000).expect("Sample rate is non-zero"),
+            clock: VirtualClock::default(),
+        })
     }
 }
 

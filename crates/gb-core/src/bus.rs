@@ -12,6 +12,8 @@ use tracing::warn;
 #[derive(Debug, Clone)]
 pub struct GbBus {
     cartridge: Rom,
+    boot_rom: Option<[u8; 0x100]>,
+    boot_mapped: bool,
 
     vram: [u8; 0x2000],
     wram: [u8; 0x2000],
@@ -30,6 +32,8 @@ impl GbBus {
     pub fn new(cartridge: Rom) -> Self {
         Self {
             cartridge,
+            boot_rom: None,
+            boot_mapped: false,
 
             vram: [0xFF; 0x2000],
             wram: [0xFF; 0x2000],
@@ -42,14 +46,35 @@ impl GbBus {
         }
     }
 
+    /// Creates a bus that begins with the given boot ROM
+    /// mapped over cartridge addresses $0000-$00FF.
+    pub fn with_boot_rom(cartridge: Rom, boot_rom: [u8; 0x100]) -> Self {
+        let mut bus = Self::new(cartridge);
+
+        bus.boot_rom = Some(boot_rom);
+        bus.boot_mapped = true;
+
+        bus
+    }
+
     /// Returns a reference to the loaded cartridge
     pub fn cartridge(&self) -> &Rom {
         &self.cartridge
+    }
+
+    /// Returns whether the boot ROM is currently mapped.
+    pub fn boot_rom_mapped(&self) -> bool {
+        self.boot_mapped
     }
 }
 
 impl sm83::Bus for GbBus {
     fn read8(&mut self, address: u16) -> u8 {
+        if self.boot_mapped && address <= 0x00FF {
+            return self.boot_rom.as_ref().expect("mapped boot ROM must exist")
+                [usize::from(address)];
+        }
+
         match address {
             // Cartridge ROM
             0x0000..=0x7FFF => self
@@ -95,6 +120,13 @@ impl sm83::Bus for GbBus {
             0xFE00..=0xFE9F => self.oam[usize::from(address - 0xFE00)] = value,
             0xFEA0..=0xFEFF => {
                 warn!("Attempted to write to illegal address ${address:04X} with value {value:02X}")
+            }
+            0xFF50 => {
+                // Boot ROM mappins is disabled by a nonzero write
+                if value != 0 {
+                    self.boot_mapped = false;
+                }
+                self.io[0x50] = value;
             }
             0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)] = value,
             0xFF80..=0xFFFE => self.hram[usize::from(address - 0xFF80)] = value,

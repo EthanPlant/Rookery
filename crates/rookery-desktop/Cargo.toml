@@ -13,6 +13,7 @@ rookery-common = { path = "../rookery-common" }
 gb-core = { path = "../gb-core" }
 agb-core = { path = "../agb-core" }
 rookery-test = { path = "../rookery-test" }
+sm83 = { path = "../sm83" }
 
 anyhow.workspace = true
 clap.workspace = true
