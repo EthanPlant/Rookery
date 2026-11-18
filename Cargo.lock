@@ -284,6 +284,9 @@ dependencies = [
 [[package]]
 name = "sm83"
 version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "smallvec"
