@@ -126,12 +126,12 @@ fn main() -> Result<()> {
 
             match &mut machine {
                 LoadedMachine::Gb(gb) => {
-                    let budget = cycles.unwrap_or(1_000_000);
+                    let budget = cycles.unwrap_or(1_000_000_000);
 
                     println!("Machine: {:?}", gb.model());
                     println!("Boot ROM mapped: {}", gb.bus().boot_rom_mapped());
                     println!("Starting PC: ${:04X}", gb.cpu().registers().pc);
-                    println!("Cycle budge: {budget}");
+                    println!("Cycle budget: {budget}");
                     println!();
 
                     run_gb(gb, ExecutionLimit::Cycles(budget), false)?;

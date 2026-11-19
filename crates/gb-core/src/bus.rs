@@ -3,7 +3,7 @@
 //! Provides the address space accessed by the SM83 CPU.
 
 use rookery_common::rom::Rom;
-use tracing::warn;
+use tracing::{info, warn};
 
 /// Memory bus for the Game Boy and Game Boy Color.
 ///
@@ -23,6 +23,10 @@ pub struct GbBus {
 
     hram: [u8; 0x7F],
     ie: u8,
+
+    // TEMP:
+    ly: u8,
+    line_cycles: u32,
 }
 
 impl GbBus {
@@ -43,6 +47,9 @@ impl GbBus {
 
             hram: [0xFF; 0x7F],
             ie: 0,
+
+            ly: 0,
+            line_cycles: 0,
         }
     }
 
@@ -55,6 +62,24 @@ impl GbBus {
         bus.boot_mapped = true;
 
         bus
+    }
+
+    /// Just a hacky way to pretend we have scanlines until we have a PPU emulated
+    /// Required for the boot ROM to not get stuck in an infinite loop.
+    pub fn advance_cycles(&mut self, cycles: u32) {
+        // LCD disabled: LY stays at zero.
+        if self.io[0x40] & 0x80 == 0 {
+            self.ly = 0;
+            self.line_cycles = 0;
+            return;
+        }
+
+        self.line_cycles += cycles;
+
+        while self.line_cycles >= 456 {
+            self.line_cycles -= 456;
+            self.ly = (self.ly + 1) % 154;
+        }
     }
 
     /// Returns a reference to the loaded cartridge
@@ -98,6 +123,7 @@ impl sm83::Bus for GbBus {
                 warn!("Attempted to read from illegal memory address ${address:04X}");
                 0xFF
             }
+            0xFF44 => self.ly,
             // I/O registers
             0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)],
             // High RAM
@@ -122,11 +148,15 @@ impl sm83::Bus for GbBus {
                 warn!("Attempted to write to illegal address ${address:04X} with value {value:02X}")
             }
             0xFF50 => {
-                // Boot ROM mappins is disabled by a nonzero write
+                // Boot ROM mapping is disabled by a nonzero write
                 if value != 0 {
+                    info!("Boot ROM unmapped!");
                     self.boot_mapped = false;
                 }
                 self.io[0x50] = value;
+            }
+            0xFF44 => {
+                warn!("Attempted to write to read-only LY register")
             }
             0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)] = value,
             0xFF80..=0xFFFE => self.hram[usize::from(address - 0xFF80)] = value,

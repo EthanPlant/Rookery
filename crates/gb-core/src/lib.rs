@@ -392,6 +392,7 @@ impl GameBoy {
     pub fn step_instruction(&mut self) -> Result<StepResult, GameBoyStepError> {
         let result = self.cpu.step_with_trace(&mut self.bus)?;
 
+        self.bus.advance_cycles(result.cycles);
         self.clock.advance(u64::from(result.cycles))?;
 
         Ok(result)
