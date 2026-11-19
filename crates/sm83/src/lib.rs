@@ -14,7 +14,7 @@
 
 use thiserror::Error;
 
-use crate::Instruction::{AddHl, LoadDecHl, LoadIncHl, RotateALeft};
+use crate::Instruction::DecrementHL;
 
 /// Zero Flag (Z)
 ///
@@ -231,14 +231,21 @@ impl Sm83 {
         let instruction = match opcode {
             Opcode::Base(0x00) => Instruction::Nop,
 
+            Opcode::Base(0xC3) => Instruction::Jump {
+                addr: self.fetch16(bus),
+            },
+
+            Opcode::Base(0xE9) => Instruction::JumpHl,
+
             Opcode::Base(0x18) => Instruction::JumpRelative {
                 offset: self.fetch8(bus) as i8,
             },
 
-            Opcode::Base(code @ (0x20 | 0x28)) => {
+            Opcode::Base(code @ (0x20 | 0x28 | 0x30)) => {
                 let condition = match code {
                     0x20 => Condition::NotZero,
                     0x28 => Condition::Zero,
+                    0x30 => Condition::NotCarry,
                     _ => unreachable!(),
                 };
 
@@ -247,11 +254,13 @@ impl Sm83 {
                 Instruction::JumpRelativeConditional { condition, offset }
             }
 
-            Opcode::Base(code @ (0x06 | 0x0E | 0x1E | 0x2E | 0x3E)) => {
+            Opcode::Base(code @ (0x06 | 0x0E | 0x16 | 0x1E | 0x26 | 0x2E | 0x3E)) => {
                 let register = match code {
                     0x06 => Register8::B,
                     0x0E => Register8::C,
+                    0x16 => Register8::D,
                     0x1E => Register8::E,
+                    0x26 => Register8::H,
                     0x2E => Register8::L,
                     0x3E => Register8::A,
                     _ => unreachable!(),
@@ -263,8 +272,41 @@ impl Sm83 {
                 }
             }
 
-            Opcode::Base(code @ 0x4F) => {
+            Opcode::Base(code @ 0x29) => {
+                let register = match code {
+                    0x29 => Register16::HL,
+                    _ => unreachable!(),
+                };
+
+                Instruction::AddHlRegister { register }
+            }
+
+            Opcode::Base(code @ (0x40 | 0x41 | 0x42 | 0x43 | 0x44 | 0x45 | 0x47)) => {
                 let source = match code {
+                    0x40 => Register8::B,
+                    0x41 => Register8::C,
+                    0x42 => Register8::D,
+                    0x43 => Register8::E,
+                    0x44 => Register8::H,
+                    0x45 => Register8::L,
+                    0x47 => Register8::A,
+                    _ => unreachable!(),
+                };
+
+                Instruction::LoadSourceDest {
+                    source,
+                    dest: Register8::B,
+                }
+            }
+
+            Opcode::Base(code @ (0x48 | 0x49 | 0x4A | 0x4B | 0x4C | 0x4D | 0x4F)) => {
+                let source = match code {
+                    0x48 => Register8::B,
+                    0x49 => Register8::C,
+                    0x4A => Register8::D,
+                    0x4B => Register8::E,
+                    0x4C => Register8::H,
+                    0x4D => Register8::L,
                     0x4F => Register8::A,
                     _ => unreachable!(),
                 };
@@ -275,20 +317,50 @@ impl Sm83 {
                 }
             }
 
-            Opcode::Base(code @ 0x57) => {
+            Opcode::Base(code @ (0x50 | 0x51 | 0x52 | 0x53 | 0x54 | 0x55 | 0x57)) => {
                 let source = match code {
+                    0x50 => Register8::B,
+                    0x51 => Register8::C,
+                    0x52 => Register8::D,
+                    0x53 => Register8::E,
+                    0x54 => Register8::H,
+                    0x55 => Register8::L,
                     0x57 => Register8::A,
                     _ => unreachable!(),
                 };
 
                 Instruction::LoadSourceDest {
                     source,
-                    dest: Register8::B,
+                    dest: Register8::D,
                 }
             }
 
-            Opcode::Base(code @ 0x67) => {
+            Opcode::Base(code @ (0x58 | 0x59 | 0x5A | 0x5B | 0x5C | 0x5D | 0x5F)) => {
                 let source = match code {
+                    0x58 => Register8::B,
+                    0x59 => Register8::C,
+                    0x5A => Register8::D,
+                    0x5B => Register8::E,
+                    0x5C => Register8::H,
+                    0x5D => Register8::L,
+                    0x5F => Register8::A,
+                    _ => unreachable!(),
+                };
+
+                Instruction::LoadSourceDest {
+                    source,
+                    dest: Register8::E,
+                }
+            }
+
+            Opcode::Base(code @ (0x60 | 0x61 | 0x62 | 0x63 | 0x64 | 0x65 | 0x67)) => {
+                let source = match code {
+                    0x60 => Register8::B,
+                    0x61 => Register8::C,
+                    0x62 => Register8::D,
+                    0x63 => Register8::E,
+                    0x64 => Register8::H,
+                    0x65 => Register8::L,
                     0x67 => Register8::A,
                     _ => unreachable!(),
                 };
@@ -299,12 +371,33 @@ impl Sm83 {
                 }
             }
 
-            Opcode::Base(code @ (0x78 | 0x7B | 0x7C | 0x7D)) => {
+            Opcode::Base(code @ (0x68 | 0x69 | 0x6A | 0x6B | 0x6C | 0x6D | 0x6F)) => {
+                let source = match code {
+                    0x68 => Register8::B,
+                    0x69 => Register8::C,
+                    0x6A => Register8::D,
+                    0x6B => Register8::E,
+                    0x6C => Register8::H,
+                    0x6D => Register8::L,
+                    0x6F => Register8::A,
+                    _ => unreachable!(),
+                };
+
+                Instruction::LoadSourceDest {
+                    source,
+                    dest: Register8::L,
+                }
+            }
+
+            Opcode::Base(code @ (0x78 | 0x79 | 0x7A | 0x7B | 0x7C | 0x7D | 0x7F)) => {
                 let source = match code {
                     0x78 => Register8::B,
+                    0x79 => Register8::C,
+                    0x7A => Register8::D,
                     0x7B => Register8::E,
                     0x7C => Register8::H,
                     0x7D => Register8::L,
+                    0x7F => Register8::A,
                     _ => unreachable!(),
                 };
 
@@ -314,8 +407,9 @@ impl Sm83 {
                 }
             }
 
-            Opcode::Base(code @ (0x11 | 0x21 | 0x31)) => {
+            Opcode::Base(code @ (0x01 | 0x11 | 0x21 | 0x31)) => {
                 let register = match code {
+                    0x01 => Register16::BC,
                     0x11 => Register16::DE,
                     0x21 => Register16::HL,
                     0x31 => Register16::SP,
@@ -337,17 +431,49 @@ impl Sm83 {
                 Instruction::LoadRegPair { register }
             }
 
-            Opcode::Base(0x22) => LoadIncHl,
-            Opcode::Base(0x32) => LoadDecHl,
-
-            Opcode::Base(code @ 0xAF) => {
+            Opcode::Base(code @ 0x12) => {
                 let register = match code {
+                    0x12 => Register16::DE,
+                    _ => unreachable!(),
+                };
+
+                Instruction::StoreRegPair { register }
+            }
+
+            Opcode::Base(0x22) => Instruction::LoadIncHl,
+            Opcode::Base(0x32) => Instruction::LoadDecHl,
+            Opcode::Base(0x2A) => Instruction::LoadAIncHl,
+
+            Opcode::Base(code @ (0xA9 | 0xAD | 0xAF)) => {
+                let register = match code {
+                    0xA9 => Register8::C,
+                    0xAD => Register8::L,
                     0xAF => Register8::A,
                     _ => unreachable!(),
                 };
 
                 Instruction::Xor { register }
             }
+            Opcode::Base(0xEE) => Instruction::XorImmediate {
+                value: self.fetch8(bus),
+            },
+            Opcode::Base(0xAE) => Instruction::XorHl,
+
+            Opcode::Base(code @ (0xB0 | 0xB1 | 0xB7)) => {
+                let register = match code {
+                    0xB0 => Register8::B,
+                    0xB1 => Register8::C,
+                    0xB7 => Register8::A,
+                    _ => unreachable!(),
+                };
+
+                Instruction::Or { register }
+            }
+            Opcode::Base(0xB6) => Instruction::OrHl,
+
+            Opcode::Base(0xE6) => Instruction::AndImmediate {
+                value: self.fetch8(bus),
+            },
 
             Opcode::Base(0xE0) => Instruction::LoadHigh {
                 offset: self.fetch8(bus),
@@ -358,23 +484,29 @@ impl Sm83 {
                 offset: self.fetch8(bus),
             },
 
-            Opcode::Base(code @ (0x04 | 0x0C | 0x24)) => {
+            Opcode::Base(code @ (0x04 | 0x0C | 0x14 | 0x1C | 0x24 | 0x2C | 0x3C)) => {
                 let register = match code {
                     0x04 => Register8::B,
                     0x0C => Register8::C,
+                    0x14 => Register8::D,
+                    0x1C => Register8::E,
                     0x24 => Register8::H,
+                    0x2C => Register8::L,
+                    0x3C => Register8::A,
                     _ => unreachable!(),
                 };
 
                 Instruction::Increment { register }
             }
 
-            Opcode::Base(code @ (0x05 | 0x0D | 0x15 | 0x1D | 0x3D)) => {
+            Opcode::Base(code @ (0x05 | 0x0D | 0x15 | 0x1D | 0x25 | 0x2D | 0x3D)) => {
                 let register = match code {
                     0x05 => Register8::B,
                     0x0D => Register8::C,
                     0x15 => Register8::D,
                     0x1D => Register8::E,
+                    0x25 => Register8::H,
+                    0x2D => Register8::L,
                     0x3D => Register8::A,
                     _ => unreachable!(),
                 };
@@ -382,8 +514,9 @@ impl Sm83 {
                 Instruction::Decrement { register }
             }
 
-            Opcode::Base(code @ (0x13 | 0x23)) => {
+            Opcode::Base(code @ (0x03 | 0x13 | 0x23)) => {
                 let register = match code {
+                    0x03 => Register16::BC,
                     0x13 => Register16::DE,
                     0x23 => Register16::HL,
                     _ => unreachable!(),
@@ -392,9 +525,41 @@ impl Sm83 {
                 Instruction::Increment16 { register }
             }
 
-            Opcode::Base(code @ 0x77) => {
+            Opcode::Base(code @ 0x1B) => {
                 let register = match code {
+                    0x1B => Register16::DE,
+                    _ => unreachable!(),
+                };
+
+                Instruction::Decrement16 { register }
+            }
+
+            Opcode::Base(0x35) => DecrementHL,
+
+            Opcode::Base(code @ (0x70 | 0x71 | 0x72 | 0x73 | 0x74 | 0x75 | 0x77)) => {
+                let register = match code {
+                    0x70 => Register8::B,
+                    0x71 => Register8::C,
+                    0x72 => Register8::D,
+                    0x73 => Register8::E,
+                    0x74 => Register8::H,
+                    0x75 => Register8::L,
                     0x77 => Register8::A,
+                    _ => unreachable!(),
+                };
+
+                Instruction::StoreHl { register }
+            }
+
+            Opcode::Base(code @ (0x46 | 0x4E | 0x56 | 0x5E | 0x66 | 0x6E | 0x7E)) => {
+                let register = match code {
+                    0x46 => Register8::B,
+                    0x4E => Register8::C,
+                    0x56 => Register8::D,
+                    0x5E => Register8::E,
+                    0x66 => Register8::H,
+                    0x6E => Register8::L,
+                    0x7E => Register8::A,
                     _ => unreachable!(),
                 };
 
@@ -405,27 +570,56 @@ impl Sm83 {
                 addr: self.fetch16(bus),
             },
 
-            Opcode::Base(0xC9) => Instruction::Return,
+            Opcode::Base(code @ 0xC4) => {
+                let condition = match code {
+                    0xC4 => Condition::NotZero,
+                    _ => unreachable!(),
+                };
 
-            Opcode::Base(code @ 0xC5) => {
+                Instruction::CallConditional {
+                    condition,
+                    addr: self.fetch16(bus),
+                }
+            }
+
+            Opcode::Base(0xC9) => Instruction::Return,
+            Opcode::Base(code @ (0xC8 | 0xD0 | 0xD8)) => {
+                let condition = match code {
+                    0xC8 => Condition::Zero,
+                    0xD0 => Condition::NotCarry,
+                    0xD8 => Condition::Carry,
+                    _ => unreachable!(),
+                };
+
+                Instruction::ReturnConditional { condition }
+            }
+
+            Opcode::Base(code @ (0xC5 | 0xD5 | 0xE5 | 0xF5)) => {
                 let register = match code {
                     0xC5 => Register16::BC,
+                    0xD5 => Register16::DE,
+                    0xE5 => Register16::HL,
+                    0xF5 => Register16::AF,
                     _ => unreachable!(),
                 };
 
                 Instruction::Push { register }
             }
 
-            Opcode::Base(code @ 0xC1) => {
+            Opcode::Base(code @ (0xC1 | 0xD1 | 0xE1 | 0xF1)) => {
                 let register = match code {
-                    0xc1 => Register16::BC,
+                    0xE1 => Register16::HL,
+                    0xD1 => Register16::DE,
+                    0xC1 => Register16::BC,
+                    0xF1 => Register16::AF,
                     _ => unreachable!(),
                 };
 
                 Instruction::Pop { register }
             }
 
-            Opcode::Base(0x17) => RotateALeft,
+            Opcode::Base(0x17) => Instruction::RotateALeft,
+            Opcode::Base(0x1F) => Instruction::RotateARight,
 
             Opcode::Base(0xFE) => Instruction::Compare {
                 value: self.fetch8(bus),
@@ -433,6 +627,10 @@ impl Sm83 {
             Opcode::Base(0xBE) => Instruction::CompareHl,
 
             Opcode::Base(0xEA) => Instruction::StoreA {
+                addr: self.fetch16(bus),
+            },
+
+            Opcode::Base(0xFA) => Instruction::LoadA {
                 addr: self.fetch16(bus),
             },
 
@@ -444,8 +642,29 @@ impl Sm83 {
 
                 Instruction::Subtract { register }
             }
+            Opcode::Base(0xD6) => Instruction::SubImmediate {
+                value: self.fetch8(bus),
+            },
 
-            Opcode::Base(0x86) => AddHl,
+            Opcode::Base(0xC6) => Instruction::AddImmediate {
+                value: self.fetch8(bus),
+            },
+            Opcode::Base(0x86) => Instruction::AddHl,
+
+            Opcode::Base(0xCE) => Instruction::AddCarryImmediate {
+                value: self.fetch8(bus),
+            },
+
+            Opcode::Base(0xF3) => Instruction::DisableInterrupts,
+
+            Opcode::Cb(code @ 0x38) => {
+                let register = match code {
+                    0x38 => Register8::B,
+                    _ => unreachable!(),
+                };
+
+                Instruction::ShiftRight { register }
+            }
 
             Opcode::Cb(code @ 0x11) => {
                 let register = match code {
@@ -454,6 +673,17 @@ impl Sm83 {
                 };
 
                 Instruction::RotateLeft { register }
+            }
+
+            Opcode::Cb(code @ (0x19 | 0x1A | 0x1B)) => {
+                let register = match code {
+                    0x19 => Register8::C,
+                    0x1A => Register8::D,
+                    0x1B => Register8::E,
+                    _ => unreachable!(),
+                };
+
+                Instruction::RotateRight { register }
             }
 
             Opcode::Cb(code @ 0x40..=0x7F) if code & 0x07 != 6 => {
@@ -506,6 +736,16 @@ impl Sm83 {
                 12
             }
 
+            Instruction::Jump { addr } => {
+                self.registers.pc = addr;
+                16
+            }
+
+            Instruction::JumpHl => {
+                self.registers.pc = self.registers.hl();
+                4
+            }
+
             Instruction::JumpRelative { offset } => {
                 self.registers.pc = self.registers.pc.wrapping_add_signed(i16::from(offset));
                 12
@@ -520,6 +760,24 @@ impl Sm83 {
                 }
             }
 
+            Instruction::AddHlRegister { register } => {
+                let result = self
+                    .registers
+                    .hl()
+                    .wrapping_add(self.registers.get16(register));
+                self.registers.f = 0;
+                if (self.registers.hl() & 0xFFF) + (self.registers.get16(register) & 0x0FFF)
+                    > 0x0FFF
+                {
+                    self.registers.f |= FLAG_H;
+                }
+                if (self.registers.hl() as u32) + (self.registers.get16(register) as u32) > 0xFFFF {
+                    self.registers.f |= FLAG_C;
+                }
+                self.registers.set_hl(result);
+                8
+            }
+
             Instruction::LoadIncHl => {
                 self.write8(bus, self.registers.hl(), self.registers.a);
                 self.registers.set_hl(self.registers.hl().wrapping_add(1));
@@ -532,8 +790,32 @@ impl Sm83 {
                 8
             }
 
+            Instruction::LoadAIncHl => {
+                self.registers.a = self.read8(bus, self.registers.hl());
+                self.registers.set_hl(self.registers.hl().wrapping_add(1));
+                8
+            }
+
             Instruction::LoadRegPair { register } => {
                 self.registers.a = self.read8(bus, self.registers.get16(register));
+                8
+            }
+
+            Instruction::StoreRegPair { register } => {
+                self.write8(bus, self.registers.get16(register), self.registers.a);
+                8
+            }
+
+            Instruction::Or { register } => {
+                let value = self.registers.get8(register);
+                self.registers.a |= value;
+                self.registers.f = if self.registers.a == 0 { FLAG_Z } else { 0 };
+                4
+            }
+
+            Instruction::OrHl => {
+                self.registers.a |= self.read8(bus, self.registers.hl());
+                self.registers.f = if self.registers.a == 0 { FLAG_Z } else { 0 };
                 8
             }
 
@@ -541,6 +823,38 @@ impl Sm83 {
                 let value = self.registers.get8(register);
                 self.registers.a ^= value;
                 self.registers.f = if self.registers.a == 0 { FLAG_Z } else { 0 };
+                4
+            }
+
+            Instruction::XorImmediate { value } => {
+                self.registers.a ^= value;
+                self.registers.f = if self.registers.a == 0 { FLAG_Z } else { 0 };
+                8
+            }
+
+            Instruction::XorHl => {
+                self.registers.a ^= self.read8(bus, self.registers.hl());
+                self.registers.f = if self.registers.a == 0 { FLAG_Z } else { 0 };
+                8
+            }
+
+            Instruction::And { register } => {
+                self.registers.a &= self.registers.get8(register);
+                self.registers.f = if self.registers.a == 0 {
+                    FLAG_Z | FLAG_H
+                } else {
+                    FLAG_H
+                };
+                4
+            }
+
+            Instruction::AndImmediate { value } => {
+                self.registers.a &= value;
+                self.registers.f = if self.registers.a == 0 {
+                    FLAG_Z | FLAG_H
+                } else {
+                    FLAG_H
+                };
                 4
             }
 
@@ -562,7 +876,6 @@ impl Sm83 {
 
             Instruction::Increment { register } => {
                 let result = self.registers.get8(register).wrapping_add(1);
-                // The carry flag is preserved, N is cleared, Z and H are set based on the increment result.
                 self.registers.f &= FLAG_C;
                 if result == 0 {
                     self.registers.f |= FLAG_Z;
@@ -594,8 +907,35 @@ impl Sm83 {
                 8
             }
 
-            Instruction::LoadHl { register } => {
+            Instruction::Decrement16 { register } => {
+                self.registers
+                    .set16(register, self.registers.get16(register).wrapping_sub(1));
+                8
+            }
+
+            Instruction::DecrementHL => {
+                let value = self.read8(bus, self.registers.hl());
+                self.registers.f &= FLAG_C;
+                self.registers.f |= FLAG_N;
+                if value & 0x0F == 0x00 {
+                    self.registers.f |= FLAG_H;
+                }
+                // Decrementing 1 = 0
+                if value == 1 {
+                    self.registers.f |= FLAG_Z;
+                }
+                self.write8(bus, self.registers.hl(), value.wrapping_sub(1));
+                12
+            }
+
+            Instruction::StoreHl { register } => {
                 self.write8(bus, self.registers.hl(), self.registers.get8(register));
+                8
+            }
+
+            Instruction::LoadHl { register } => {
+                let value = self.read8(bus, self.registers.hl());
+                self.registers.set8(register, value);
                 8
             }
 
@@ -605,9 +945,28 @@ impl Sm83 {
                 12
             }
 
+            Instruction::CallConditional { condition, addr } => {
+                if condition.evaluate(self.registers.f) {
+                    self.push(bus, self.registers.pc);
+                    self.registers.pc = addr;
+                    24
+                } else {
+                    12
+                }
+            }
+
             Instruction::Return => {
                 self.registers.pc = self.pop(bus);
                 16
+            }
+
+            Instruction::ReturnConditional { condition } => {
+                if condition.evaluate(self.registers.f) {
+                    self.registers.pc = self.pop(bus);
+                    20
+                } else {
+                    8
+                }
             }
 
             Instruction::Push { register } => {
@@ -627,6 +986,23 @@ impl Sm83 {
                 let last = if self.registers.f & FLAG_C != 0 { 1 } else { 0 };
                 let result = (value << 1) | last;
                 self.registers.f = if carry != 0 { FLAG_C } else { 0 };
+                self.registers.a = result;
+                4
+            }
+
+            Instruction::RotateARight => {
+                let value = self.registers.a;
+                let carry = value & 1;
+                let msb = if self.registers.f & FLAG_C != 0 {
+                    1 << 7
+                } else {
+                    0
+                };
+                let result = (value >> 1) | msb;
+                self.registers.f = if carry != 0 { FLAG_C } else { 0 };
+                if result == 0 {
+                    self.registers.f |= FLAG_Z;
+                }
                 self.registers.a = result;
                 4
             }
@@ -665,6 +1041,11 @@ impl Sm83 {
                 12
             }
 
+            Instruction::LoadA { addr } => {
+                self.registers.a = self.read8(bus, addr);
+                16
+            }
+
             Instruction::Subtract { register } => {
                 self.registers.f = FLAG_N;
                 let value = self.registers.get8(register);
@@ -679,6 +1060,36 @@ impl Sm83 {
                     self.registers.f |= FLAG_Z;
                 }
                 4
+            }
+
+            Instruction::SubImmediate { value } => {
+                self.registers.f = FLAG_N;
+                if self.registers.a < value {
+                    self.registers.f |= FLAG_C;
+                }
+                if (self.registers.a & 0x0F) < (value & 0x0F) {
+                    self.registers.f |= FLAG_H
+                }
+                self.registers.a = self.registers.a.wrapping_sub(1);
+                if self.registers.a == 0 {
+                    self.registers.f |= FLAG_Z;
+                }
+                8
+            }
+
+            Instruction::AddImmediate { value } => {
+                self.registers.f = 0;
+                if (self.registers.a as u16) + (value as u16) > 0xFF {
+                    self.registers.f |= FLAG_C;
+                }
+                if (self.registers.a & 0x0F) + (value & 0x0F) > 0x0F {
+                    self.registers.f |= FLAG_H;
+                }
+                self.registers.a = self.registers.a.wrapping_add(value);
+                if self.registers.a == 0 {
+                    self.registers.f |= FLAG_Z;
+                }
+                8
             }
 
             Instruction::AddHl => {
@@ -697,11 +1108,61 @@ impl Sm83 {
                 8
             }
 
+            Instruction::AddCarryImmediate { value } => {
+                let carry = if self.registers.f & FLAG_C != 0 { 1 } else { 0 };
+                let result = self.registers.a.wrapping_add(value).wrapping_add(carry);
+                self.registers.f = 0;
+                if result == 0 {
+                    self.registers.f |= FLAG_Z;
+                }
+                if (self.registers.a as u16) + (value as u16) + (carry as u16) > 0xFF {
+                    self.registers.f |= FLAG_C;
+                }
+                if (self.registers.a & 0x0F) + (value & 0x0F) + (carry & 0x0F) > 0x0F {
+                    self.registers.f |= FLAG_H;
+                }
+                self.registers.a = result;
+                8
+            }
+
+            Instruction::DisableInterrupts => {
+                self.ime = false;
+                4
+            }
+
+            Instruction::ShiftRight { register } => {
+                let value = self.registers.get8(register);
+                let carry = value & 1;
+                self.registers.set8(register, value);
+                self.registers.f = if carry != 0 { FLAG_C } else { 0 };
+                if self.registers.get8(register) == 0 {
+                    self.registers.f |= FLAG_Z;
+                }
+                8
+            }
+
             Instruction::RotateLeft { register } => {
                 let value = self.registers.get8(register);
                 let carry = (value >> 7) & 1;
                 let last = if self.registers.f & FLAG_C != 0 { 1 } else { 0 };
                 let result = (value << 1) | last;
+                self.registers.f = if carry != 0 { FLAG_C } else { 0 };
+                if result == 0 {
+                    self.registers.f |= FLAG_Z;
+                }
+                self.registers.set8(register, result);
+                8
+            }
+
+            Instruction::RotateRight { register } => {
+                let value = self.registers.get8(register);
+                let carry = value & 1;
+                let msb = if self.registers.f & FLAG_C != 0 {
+                    1 << 7
+                } else {
+                    0
+                };
+                let result = (value >> 1) | msb;
                 self.registers.f = if carry != 0 { FLAG_C } else { 0 };
                 if result == 0 {
                     self.registers.f |= FLAG_Z;
@@ -1137,6 +1598,15 @@ pub enum Instruction {
         value: u16,
     },
 
+    /// Jump to an address.
+    Jump {
+        /// The address to jump to.
+        addr: u16,
+    },
+
+    /// Jump to the address pointed to by HL.
+    JumpHl,
+
     /// Perform a jump relative to the current location.
     JumpRelative {
         /// The offset to jump to.
@@ -1151,11 +1621,20 @@ pub enum Instruction {
         offset: i8,
     },
 
+    /// Add the contents of a register pair to HL.
+    AddHlRegister {
+        /// The register pair to add.
+        register: Register16,
+    },
+
     /// Load the value of A into the memory address pointed to by HL, and increment HL.
     LoadIncHl,
 
     /// Load the value of A into the memory address pointed to by HL, and decrement HL.
     LoadDecHl,
+
+    /// Load the value pointed at by HL into A, and increment HL
+    LoadAIncHl,
 
     /// Load the value at the memory address pointed to by a register pair into A.
     LoadRegPair {
@@ -1163,10 +1642,46 @@ pub enum Instruction {
         register: Register16,
     },
 
-    /// XOR the A register with an 8-bit value
+    /// Store the contents of A at the memory address pointed to by a register pair.
+    StoreRegPair {
+        /// The register pair to store into.
+        register: Register16,
+    },
+
+    /// OR the A register with the contents of a register.
+    Or {
+        /// The register to OR with.
+        register: Register8,
+    },
+
+    /// OR the A register with the contents pointed to by HL.
+    OrHl,
+
+    /// XOR the A register with the contents of a register.
     Xor {
         /// The register to XOR with
         register: Register8,
+    },
+
+    /// XOR the A register with an immediate 8-bit value.
+    XorImmediate {
+        /// The value to XOR with.
+        value: u8,
+    },
+
+    /// XOR the A register with the value pointed to by HL.
+    XorHl,
+
+    /// AND the A register with the contents of a register.
+    And {
+        /// The register to AND with.
+        register: Register8,
+    },
+
+    /// AND the A register with an immediate 8-bit value
+    AndImmediate {
+        /// The value to AND with.
+        value: u8,
     },
 
     /// Load the value in A to $FF00 + C.
@@ -1202,9 +1717,24 @@ pub enum Instruction {
         register: Register16,
     },
 
+    /// Decrement a 16-bit register pair.
+    Decrement16 {
+        /// The register pair to decrement.
+        register: Register16,
+    },
+
+    /// Decremnt the value pointed to by HL.
+    DecrementHL,
+
     /// Load the value of a register into the memory address pointed to by HL.
-    LoadHl {
+    StoreHl {
         /// The register to load.
+        register: Register8,
+    },
+
+    /// Load the value pointed to by HL into a register.
+    LoadHl {
+        /// The register to load into.
         register: Register8,
     },
 
@@ -1214,8 +1744,23 @@ pub enum Instruction {
         addr: u16,
     },
 
+    /// Conditionally call a subroutine.
+    CallConditional {
+        /// The condition to evaluate.
+        condition: Condition,
+
+        /// The address of the subroutine.
+        addr: u16,
+    },
+
     /// Return from a subroutine.
     Return,
+
+    /// Conditionally return from a subroutine.
+    ReturnConditional {
+        /// The condition to evaluate.
+        condition: Condition,
+    },
 
     /// Push a register pair onto the stack.
     Push {
@@ -1232,6 +1777,9 @@ pub enum Instruction {
     /// Rotate the A register left.
     RotateALeft,
 
+    /// Rotate the A register right.
+    RotateARight,
+
     /// Compare register A.
     Compare {
         /// The value to compare A with
@@ -1247,18 +1795,57 @@ pub enum Instruction {
         addr: u16,
     },
 
+    /// Load the value at a given memory address into A.
+    LoadA {
+        /// The address to store at.
+        addr: u16,
+    },
+
     /// Subtract the value of a register from A.
     Subtract {
         /// The register to subtract.
         register: Register8,
     },
 
+    /// Subtract an immediate 8-bit value to A.
+    SubImmediate {
+        /// The immediate value to subtract.
+        value: u8,
+    },
+
+    /// Add an immediate 8-bit value to A.
+    AddImmediate {
+        /// The immediate value to add.
+        value: u8,
+    },
+
     /// Add the value pointed to by HL to A.
     AddHl,
+
+    /// Add an immediate value to A and the carry flag.
+    AddCarryImmediate {
+        /// The immediate value to add.
+        value: u8,
+    },
+
+    /// Disable interrupts.
+    DisableInterrupts,
+
+    /// Shift the contents of a register to the right.
+    ShiftRight {
+        /// The register to shift.
+        register: Register8,
+    },
 
     /// Rotate the contents of a register to the left.
     RotateLeft {
         /// The register to rotate left.
+        register: Register8,
+    },
+
+    /// Rotate the contents of a register to the right.
+    RotateRight {
+        /// The register to rotate.
         register: Register8,
     },
 
@@ -1282,33 +1869,59 @@ impl std::fmt::Display for Instruction {
             Instruction::LoadImmediate16 { register, value } => {
                 write!(f, "LD {register}, ${value:04X}")
             }
+            Instruction::Jump { addr } => write!(f, "JP ${addr:04X}"),
+            Instruction::JumpHl => write!(f, "JP HL"),
             Instruction::JumpRelative { offset } => write!(f, "JR @{offset:+}"),
             Instruction::JumpRelativeConditional { condition, offset } => {
                 write!(f, "JR {condition}, @{offset:+}")
             }
+            Instruction::AddHlRegister { register } => write!(f, "ADD HL, {register}"),
             Instruction::LoadIncHl => write!(f, "LD (HL+), A"),
             Instruction::LoadDecHl => write!(f, "LD (HL-), A"),
+            Instruction::LoadAIncHl => write!(f, "LD A, (HL+)"),
             Instruction::LoadRegPair { register } => write!(f, "LD A, ({register})"),
+            Instruction::StoreRegPair { register } => write!(f, "LD ({register}), A"),
+            Instruction::Or { register } => write!(f, "OR {register}"),
+            Instruction::OrHl => write!(f, "OR (HL)"),
             Instruction::Xor { register } => write!(f, "XOR {register}"),
+            Instruction::XorHl => write!(f, "XOR HL"),
+            Instruction::XorImmediate { value } => write!(f, "XOR ${value:02X}"),
+            Instruction::And { register } => write!(f, "AND {register}"),
+            Instruction::AndImmediate { value } => write!(f, "AND ${value:02X}"),
             Instruction::LoadHighRamC => write!(f, "LD (C), A"),
             Instruction::LoadHigh { offset } => write!(f, "LDH (${offset:02x}), A"),
             Instruction::ReadHigh { offset } => write!(f, "LDH A, (${offset:02x})"),
             Instruction::Increment { register } => write!(f, "INC {register}"),
             Instruction::Decrement { register } => write!(f, "DEC {register}"),
             Instruction::Increment16 { register } => write!(f, "INC {register}"),
-            Instruction::LoadHl { register } => write!(f, "LD (HL), {register}"),
+            Instruction::Decrement16 { register } => write!(f, "DEC {register}"),
+            Instruction::DecrementHL => write!(f, "DEC (HL)"),
+            Instruction::StoreHl { register } => write!(f, "LD (HL), {register}"),
+            Instruction::LoadHl { register } => write!(f, "LD {register}, (HL)"),
             Instruction::Call { addr } => write!(f, "CALL ${addr:04X}"),
+            Instruction::CallConditional { condition, addr } => {
+                write!(f, "CALL {condition} #{addr:04X}")
+            }
             Instruction::Return => write!(f, "RET"),
+            Instruction::ReturnConditional { condition } => write!(f, "RET {condition}"),
             Instruction::Push { register } => write!(f, "PUSH {register}"),
             Instruction::Pop { register } => write!(f, "POP {register}"),
             Instruction::RotateALeft => write!(f, "RLA"),
+            Instruction::RotateARight => write!(f, "RRA"),
             Instruction::Compare { value } => write!(f, "CP ${value:02X}"),
             Instruction::CompareHl => write!(f, "CP (HL)"),
             Instruction::StoreA { addr } => write!(f, "LD (${addr:04X}), A"),
+            Instruction::LoadA { addr } => write!(f, "LD A, (${addr:04X})"),
             Instruction::Subtract { register } => write!(f, "SUB {register}"),
+            Instruction::SubImmediate { value } => write!(f, "SUB %${value:02X}"),
+            Instruction::AddImmediate { value } => write!(f, "ADD ${value:02X}"),
             Instruction::AddHl => write!(f, "ADD (HL)"),
+            Instruction::AddCarryImmediate { value } => write!(f, "ADC ${value:02X}"),
+            Instruction::DisableInterrupts => write!(f, "DI"),
 
+            Instruction::ShiftRight { register } => write!(f, "SRL {register}"),
             Instruction::RotateLeft { register } => write!(f, "RL {register}"),
+            Instruction::RotateRight { register } => write!(f, "RR {register}"),
             Instruction::TestBit { bit, register } => write!(f, "BIT {bit}, {register}"),
         }
     }

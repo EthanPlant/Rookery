@@ -147,6 +147,18 @@ impl sm83::Bus for GbBus {
             0xFEA0..=0xFEFF => {
                 warn!("Attempted to write to illegal address ${address:04X} with value {value:02X}")
             }
+            // Temporary workaround for serial output for Blargg tests
+            0xFF02 => {
+                self.io[0x02] = value;
+
+                if value == 0x81 {
+                    let character = self.io[0x01] as char;
+                    print!("{character}");
+                }
+            }
+            0xFF44 => {
+                warn!("Attempted to write to read-only LY register")
+            }
             0xFF50 => {
                 // Boot ROM mapping is disabled by a nonzero write
                 if value != 0 {
@@ -154,9 +166,6 @@ impl sm83::Bus for GbBus {
                     self.boot_mapped = false;
                 }
                 self.io[0x50] = value;
-            }
-            0xFF44 => {
-                warn!("Attempted to write to read-only LY register")
             }
             0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)] = value,
             0xFF80..=0xFFFE => self.hram[usize::from(address - 0xFF80)] = value,

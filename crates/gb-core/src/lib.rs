@@ -128,6 +128,7 @@ use rookery_common::{
 };
 use sm83::{CpuError, Registers, Sm83, StepResult};
 use thiserror::Error;
+use tracing::warn;
 
 use crate::bus::GbBus;
 
