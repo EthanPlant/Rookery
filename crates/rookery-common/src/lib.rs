@@ -141,7 +141,7 @@ pub struct Rgb {
 ///
 /// The framebuffer does not perform scaling, color correction, synchronization,
 /// or presentation.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Framebuffer {
     width: usize,
     height: usize,

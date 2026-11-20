@@ -118,8 +118,8 @@
 
 #![warn(missing_docs)]
 
-/// Game Boy memory bus and address mapping.
 mod bus;
+mod ppu;
 mod timer;
 
 use rookery_common::{
