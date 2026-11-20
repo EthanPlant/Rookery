@@ -3,7 +3,7 @@
 //! Provides the address space accessed by the SM83 CPU.
 
 use rookery_common::rom::Rom;
-use tracing::{info, warn};
+use tracing::{debug, info};
 
 use crate::timer::Timer;
 
@@ -141,7 +141,7 @@ impl sm83::Bus for GbBus {
             0xFE00..=0xFE9F => self.oam[usize::from(address - 0xFE00)],
             // Unusuable memory
             0xFEA0..=0xFEFF => {
-                warn!("Attempted to read from illegal memory address ${address:04X}");
+                debug!("Attempted to read from illegal memory address ${address:04X}");
                 0xFF
             }
             0xFF04..=0xFF07 => self.timer.read(address),
@@ -159,7 +159,7 @@ impl sm83::Bus for GbBus {
     fn write8(&mut self, address: u16, value: u8) {
         match address {
             // Cartridge ROM
-            0x0000..=0x7FFF => warn!(
+            0x0000..=0x7FFF => debug!(
                 "Attempted to write to cartridge ROM at ${address:04X} with value {value:02X}"
             ),
             0x8000..=0x9FFF => self.vram[usize::from(address - 0x8000)] = value,
@@ -168,7 +168,9 @@ impl sm83::Bus for GbBus {
             0xE000..=0xFDFF => self.wram[usize::from(address - 0xE000)] = value,
             0xFE00..=0xFE9F => self.oam[usize::from(address - 0xFE00)] = value,
             0xFEA0..=0xFEFF => {
-                warn!("Attempted to write to illegal address ${address:04X} with value {value:02X}")
+                debug!(
+                    "Attempted to write to illegal address ${address:04X} with value {value:02X}"
+                )
             }
             // Temporary workaround for serial output for Blargg tests
             0xFF02 => {
@@ -181,7 +183,7 @@ impl sm83::Bus for GbBus {
             0xFF04..=0xFF07 => self.timer.write(address, value),
             0xFF0F => self.io[0x0F] = value & 0x1F,
             0xFF44 => {
-                warn!("Attempted to write to read-only LY register")
+                debug!("Attempted to write to read-only LY register")
             }
             0xFF50 => {
                 // Boot ROM mapping is disabled by a nonzero write
