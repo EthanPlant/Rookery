@@ -157,6 +157,18 @@ impl Sm83 {
                 self.registers.sp = self.registers.hl();
                 8
             }
+            Instruction::AddStackPointer(offset) => {
+                let (result, flags) = alu::offset_sp(self.registers.sp, i16::from(offset));
+                self.registers.sp = result;
+                self.registers.f = flags;
+                16
+            }
+            Instruction::StoreOffsetStackPointer(offset) => {
+                let (result, flags) = alu::offset_sp(self.registers.sp, i16::from(offset));
+                self.registers.set_hl(result);
+                self.registers.f = flags;
+                12
+            }
 
             Instruction::RotateA(kind) => {
                 let (result, flags) = alu::rotate(self.registers.a, self.registers.f, kind, false);

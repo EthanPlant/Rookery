@@ -128,6 +128,8 @@ impl Sm83 {
             0x08 => Instruction::StoreStackPointer(self.fetch16(bus)),
             0xC5 | 0xD5 | 0xE5 | 0xF5 => Instruction::Push(stack_pair(code >> 4)),
             0xC1 | 0xD1 | 0xE1 | 0xF1 => Instruction::Pop(stack_pair(code >> 4)),
+            0xE8 => Instruction::AddStackPointer(self.fetch8(bus) as i8),
+            0xF8 => Instruction::StoreOffsetStackPointer(self.fetch8(bus) as i8),
             0xF9 => Instruction::LoadStackPointerHl,
 
             0xF3 => Instruction::DisableInterrupts,

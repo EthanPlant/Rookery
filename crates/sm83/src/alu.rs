@@ -82,6 +82,18 @@ pub(crate) fn add_hl(hl: u16, rhs: u16, old_f: u8) -> (u16, u8) {
     (result, flags)
 }
 
+pub(crate) fn offset_sp(sp: u16, offset: i16) -> (u16, u8) {
+    let result = sp.wrapping_add_signed(offset);
+    let mut flags = 0;
+    if (sp & 0x0F) + (offset as u16 & 0x0F) > 0x0F {
+        flags |= FLAG_H;
+    }
+    if (sp & 0xFF) + (offset as u16 & 0xFF) > 0xFF {
+        flags |= FLAG_C;
+    }
+    (result, flags)
+}
+
 pub(crate) fn rotate(value: u8, old_f: u8, kind: RotateKind, set_z: bool) -> (u8, u8) {
     let carry_in = u8::from(old_f & FLAG_C != 0);
     let (result, carry_out) = match kind {

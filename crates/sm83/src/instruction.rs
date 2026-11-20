@@ -82,6 +82,10 @@ pub enum Instruction {
     StoreStackPointer(u16),
     /// Load the value of HL into the stack pointer.
     LoadStackPointerHl,
+    /// Add a signed offset to the stack pointer.
+    AddStackPointer(i8),
+    /// Add a signed offset to the stack pointer, and store the result in HL.
+    StoreOffsetStackPointer(i8),
 
     /// Special accumulator rotation (always clears Z).
     RotateA(RotateKind),
@@ -139,6 +143,8 @@ impl fmt::Display for Instruction {
             Self::Pop(destination) => write!(f, "POP {destination}"),
             Self::StoreStackPointer(addr) => write!(f, "LD (${addr:04X}), SP"),
             Self::LoadStackPointerHl => f.write_str("LD SP, HL"),
+            Self::AddStackPointer(offset) => write!(f, "ADD SP, {offset:+}"),
+            Self::StoreOffsetStackPointer(offset) => write!(f, "LD HL, SP+{offset:+}"),
             Self::RotateA(kind) => f.write_str(match kind {
                 RotateKind::Rlc => "RLCA",
                 RotateKind::Rrc => "RRCA",
