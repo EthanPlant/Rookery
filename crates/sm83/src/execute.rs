@@ -76,6 +76,12 @@ impl Sm83 {
                 self.registers.f = flags;
                 8
             }
+            Instruction::Daa => {
+                let (result, flags) = alu::daa(self.registers.a, self.registers.f);
+                self.registers.a = result;
+                self.registers.f = flags;
+                4
+            }
             Instruction::Alu { op, src } => {
                 let value = self.read_source8(bus, src);
                 let (result, flags) =

@@ -94,6 +94,49 @@ pub(crate) fn offset_sp(sp: u16, offset: i16) -> (u16, u8) {
     (result, flags)
 }
 
+pub(crate) fn daa(a: u8, old_f: u8) -> (u8, u8) {
+    let subtract = old_f & FLAG_N != 0;
+    let half_carry = old_f & FLAG_H != 0;
+    let mut carry = old_f & FLAG_C != 0;
+
+    let mut adjustment = 0;
+
+    let result = if subtract {
+        if half_carry {
+            adjustment |= 0x06;
+        }
+
+        if carry {
+            adjustment |= 0x60;
+        }
+
+        a.wrapping_sub(adjustment)
+    } else {
+        if half_carry || (a & 0x0F) > 9 {
+            adjustment |= 0x06;
+        }
+
+        if carry || a > 0x99 {
+            adjustment |= 0x60;
+            carry = true;
+        }
+
+        a.wrapping_add(adjustment)
+    };
+
+    let mut flags = old_f & FLAG_N;
+
+    if result == 0 {
+        flags |= FLAG_Z;
+    }
+
+    if carry {
+        flags |= FLAG_C;
+    }
+
+    (result, flags)
+}
+
 pub(crate) fn rotate(value: u8, old_f: u8, kind: RotateKind, set_z: bool) -> (u8, u8) {
     let carry_in = u8::from(old_f & FLAG_C != 0);
     let (result, carry_out) = match kind {

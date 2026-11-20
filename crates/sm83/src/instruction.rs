@@ -42,6 +42,8 @@ pub enum Instruction {
         /// Source operand.
         src: Source8,
     },
+    /// Decimal adjust accumulator.
+    Daa,
     /// Absolute jump.
     Jump {
         /// Condition to evaluate. `None` for an unconditional jump.
@@ -119,6 +121,7 @@ impl fmt::Display for Instruction {
             Self::Inc16(dst) => write!(f, "INC {dst}"),
             Self::Dec16(dst) => write!(f, "DEC {dst}"),
             Self::AddHL(src) => write!(f, "ADD HL, {src}"),
+            Self::Daa => f.write_str("DAA"),
             Self::Alu { op, src } => write!(f, "{op}, {src}"),
             Self::Jump { condition, address } => match condition {
                 Some(cond) => write!(f, "JP {cond}, ${address:04X}"),

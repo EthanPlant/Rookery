@@ -76,6 +76,8 @@ impl Sm83 {
             0x0B | 0x1B | 0x2B | 0x3B => Instruction::Dec16(pair(code >> 4)),
             0x09 | 0x19 | 0x29 | 0x39 => Instruction::AddHL(pair(code >> 4)),
 
+            0x27 => Instruction::Daa,
+
             // ALU operations
             0x80..=0xBF => Instruction::Alu {
                 op: AluOp::from_bits(code >> 3),

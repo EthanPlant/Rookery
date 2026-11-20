@@ -1,4 +1,4 @@
-use crate::{Bus, CpuError, FLAG_C, FLAG_H, FLAG_N, FLAG_Z, Instruction, Opcode, Registers, Sm83};
+use crate::{Bus, FLAG_C, FLAG_H, FLAG_N, FLAG_Z, Instruction, Opcode, Registers, Sm83};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Access {
@@ -245,24 +245,76 @@ fn ld_absolute_a_has_correct_cycle_count() {
 }
 
 #[test]
-fn unimplemented_and_illegal_are_different() {
+fn daa_corrects_low_nibble_after_addition() {
     let mut bus = TestBus::new();
-    bus.load(0x0100, &[0x27]); // DAA: valid, not implemented
-    let mut cpu = cpu_at(0x0100);
-    assert_eq!(
-        cpu.step(&mut bus),
-        Err(CpuError::Unimplemented {
-            pc: 0x0100,
-            opcode: Opcode::Base(0x27)
-        })
-    );
-    assert_eq!(cpu.registers().pc, 0x0100);
-    bus.load(0x0100, &[0xD3]);
-    assert_eq!(
-        cpu.step(&mut bus),
-        Err(CpuError::Illegal {
-            pc: 0x0100,
-            opcode: 0xD3
-        })
-    );
+    bus.load(0x0100, &[0x27]);
+    let mut cpu = Sm83::with_registers(Registers {
+        a: 0x0A,
+        f: 0x00,
+        pc: 0x0100,
+        ..Default::default()
+    });
+    assert_eq!(cpu.step(&mut bus).unwrap(), 4);
+    assert_eq!(cpu.registers.a, 0x10);
+    assert_eq!(cpu.registers.f, 0x00);
+}
+
+#[test]
+fn daa_sets_zero_and_carry_on_decimal_overflow() {
+    let mut bus = TestBus::new();
+    bus.load(0x0100, &[0x27]);
+    let mut cpu = Sm83::with_registers(Registers {
+        a: 0x9A,
+        f: 0x00,
+        pc: 0x0100,
+        ..Default::default()
+    });
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers.a, 0x00);
+    assert_eq!(cpu.registers.f, FLAG_Z | FLAG_C);
+}
+
+#[test]
+fn daa_corrects_half_borrow_after_subtraction() {
+    let mut bus = TestBus::new();
+    bus.load(0x0100, &[0x27]);
+    let mut cpu = Sm83::with_registers(Registers {
+        a: 0x0F,
+        f: FLAG_H | FLAG_N,
+        pc: 0x0100,
+        ..Default::default()
+    });
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers.a, 0x09);
+    assert_eq!(cpu.registers.f, FLAG_N);
+}
+
+#[test]
+fn daa_corrects_half_borrow_and_half_carry_after_subtraction() {
+    let mut bus = TestBus::new();
+    bus.load(0x0100, &[0x27]);
+    let mut cpu = Sm83::with_registers(Registers {
+        a: 0xFF,
+        f: FLAG_N | FLAG_H | FLAG_C,
+        pc: 0x0100,
+        ..Default::default()
+    });
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers.a, 0x99);
+    assert_eq!(cpu.registers.f, FLAG_N | FLAG_C);
+}
+
+#[test]
+fn daa_sets_zero_flag_for_zero_result() {
+    let mut bus = TestBus::new();
+    bus.load(0x0100, &[0x27]);
+    let mut cpu = Sm83::with_registers(Registers {
+        a: 0x00,
+        f: 0x00,
+        pc: 0x0100,
+        ..Default::default()
+    });
+    cpu.step(&mut bus).unwrap();
+    assert_eq!(cpu.registers.a, 0x00);
+    assert_eq!(cpu.registers.f, FLAG_Z);
 }
