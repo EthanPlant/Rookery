@@ -90,8 +90,8 @@ enum TestSuite {
 }
 
 enum LoadedMachine {
-    Gb(GameBoy),
-    Gba(Gba),
+    Gb(Box<GameBoy>),
+    Gba(Box<Gba>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -220,7 +220,7 @@ fn load_machine(args: &LoadArgs) -> Result<LoadedMachine> {
             } else {
                 GameBoy::new(rom, model)?
             };
-            Ok(LoadedMachine::Gb(gb))
+            Ok(LoadedMachine::Gb(Box::new(gb)))
         }
         Platform::Agb => {
             ensure!(
@@ -238,7 +238,7 @@ fn load_machine(args: &LoadArgs) -> Result<LoadedMachine> {
             };
             let machine = Gba::new(rom, bios)?;
 
-            Ok(LoadedMachine::Gba(machine))
+            Ok(LoadedMachine::Gba(Box::new(machine)))
         }
     }
 }
