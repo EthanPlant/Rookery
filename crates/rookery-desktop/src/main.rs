@@ -9,7 +9,7 @@ use anyhow::{Context, Result, bail, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use gb_core::{GameBoy, GameBoyModel};
 use rookery_common::{
-    Machine, Platform,
+    Framebuffer, Machine, Platform,
     rom::{CgbSupport, Rom, RomHeader},
     trace::{
         InstructionRecord,
@@ -46,6 +46,10 @@ enum Command {
         /// Clock cycles to advance.
         #[arg(long)]
         cycles: Option<u64>,
+
+        /// Write the final framebuffer to a PPM image.
+        #[arg(long)]
+        dump_frame: Option<PathBuf>,
     },
 
     /// Trace executed instructions.
@@ -122,7 +126,11 @@ fn main() -> Result<()> {
             print_rom_info(&cartridge);
         }
 
-        Command::Run { load, cycles } => {
+        Command::Run {
+            load,
+            cycles,
+            dump_frame,
+        } => {
             let mut machine = load_machine(&load)?;
 
             match &mut machine {
@@ -136,8 +144,18 @@ fn main() -> Result<()> {
                     println!();
 
                     run_gb(gb, ExecutionLimit::Cycles(budget), false)?;
+
+                    if let Some(path) = &dump_frame {
+                        write_ppm(path, gb.framebuffer())?;
+                        println!("Framebuffer saved to {}", path.display());
+                    }
                 }
                 LoadedMachine::Gba(gba) => {
+                    ensure!(
+                        dump_frame.is_none(),
+                        "frame dumping is not yet implemented for the GBA"
+                    );
+
                     let budget = cycles.unwrap_or(gb_core::CLOCKS_PER_FRAME);
                     gba.advance_clock_only(budget)?;
                     println!("Machine: GBA");
@@ -411,6 +429,21 @@ fn load_dmg_boot_rom(path: &Path) -> Result<[u8; 256]> {
     boot_rom.copy_from_slice(&bytes);
 
     Ok(boot_rom)
+}
+
+fn write_ppm(path: &Path, fb: &Framebuffer) -> Result<()> {
+    let file = fs::File::create(path).with_context(|| format!("creating {}", path.display()))?;
+
+    let mut writer = io::BufWriter::new(file);
+
+    write!(writer, "P6\n{} {}\n255\n", fb.width(), fb.height())?;
+
+    for pixel in fb.pixels() {
+        writer.write_all(&[pixel.r, pixel.g, pixel.b])?;
+    }
+
+    writer.flush()?;
+    Ok(())
 }
 
 fn check_status(valid: bool) -> &'static str {

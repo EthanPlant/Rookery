@@ -16,6 +16,7 @@
 *.sav
 *.srm
 *.state
+*.ppm
 
 # Explicitly redistributable public test fixtures
 !tests/fixtures/public/*.gb
