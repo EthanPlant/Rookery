@@ -252,6 +252,10 @@ pub enum GameBoyError {
     /// initialization of the cartridge.
     #[error("CGB-only cartridge cannot run on DMG")]
     CgbRequired,
+
+    /// The cartridge requires hardware that is not implemented yet.
+    #[error("unsupported cartridge type: ${0:02X}")]
+    UnsupportedCartridge(u8),
 }
 
 /// Error that may occur while executing a Game Boy instruction.
@@ -496,6 +500,11 @@ impl GameBoy {
 
         if model == GameBoyModel::Dmg && header.color_support == CgbSupport::CgbOnly {
             return Err(GameBoyError::CgbRequired);
+        }
+
+        // We currently only support ROM-only cartridges. MBC1 is a workaround for Blargg.
+        if header.cartridge_type != 0x00 && header.cartridge_type != 0x01 {
+            return Err(GameBoyError::UnsupportedCartridge(header.cartridge_type));
         }
 
         let booting = boot_rom.is_some();
