@@ -5,6 +5,8 @@
 use rookery_common::rom::Rom;
 use tracing::{info, warn};
 
+use crate::timer::Timer;
+
 /// Memory bus for the Game Boy and Game Boy Color.
 ///
 /// Owns cartridge data and the memory arrays accessible
@@ -26,6 +28,8 @@ pub struct GbBus {
     // Bytes emitted by the temporary Blargg SB/SC test protocol.
     serial_output: Vec<u8>,
 
+    timer: Timer,
+
     // TEMP:
     ly: u8,
     line_cycles: u32,
@@ -36,6 +40,9 @@ impl GbBus {
     ///
     /// All writeable memory and placeholder I/O registers are intially cleared to 0xFF.
     pub fn new(cartridge: Rom) -> Self {
+        let mut io = [0xFF; 0x80];
+        io[0x0F] = 0;
+
         Self {
             cartridge,
             boot_rom: None,
@@ -45,11 +52,13 @@ impl GbBus {
             wram: [0xFF; 0x2000],
             oam: [0xFF; 0xA0],
 
-            io: [0xFF; 0x80],
+            io,
 
             hram: [0xFF; 0x7F],
             ie: 0,
             serial_output: Vec::new(),
+
+            timer: Timer::new(),
 
             ly: 0,
             line_cycles: 0,
@@ -67,10 +76,14 @@ impl GbBus {
         bus
     }
 
-    /// Just a hacky way to pretend we have scanlines until we have a PPU emulated
-    /// Required for the boot ROM to not get stuck in an infinite loop.
     pub fn advance_cycles(&mut self, cycles: u32) {
-        // LCD disabled: LY stays at zero.
+        if self.timer.tick(cycles) {
+            // Request timer interrupt.
+            tracing::debug!("Timer interrupt");
+            self.io[0x0F] |= 0x04;
+        }
+
+        // TEMP: Scanline simulation until the PPU exists.
         if self.io[0x40] & 0x80 == 0 {
             self.ly = 0;
             self.line_cycles = 0;
@@ -132,6 +145,8 @@ impl sm83::Bus for GbBus {
                 warn!("Attempted to read from illegal memory address ${address:04X}");
                 0xFF
             }
+            0xFF04..=0xFF07 => self.timer.read(address),
+            0xFF0F => self.io[0x0F] | 0xE0, // Interrupt flags: unused upper bits read as 1.
             0xFF44 => self.ly,
             // I/O registers
             0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)],
@@ -164,6 +179,8 @@ impl sm83::Bus for GbBus {
                     self.serial_output.push(self.io[0x01]);
                 }
             }
+            0xFF04..=0xFF07 => self.timer.write(address, value),
+            0xFF0F => self.io[0x0F] = value & 0x15,
             0xFF44 => {
                 warn!("Attempted to write to read-only LY register")
             }
@@ -257,5 +274,67 @@ mod tests {
 
         assert_eq!(bus.read8(0xFF80), 0x12);
         assert_eq!(bus.read8(0xFFFF), 0x1F);
+    }
+
+    #[test]
+    fn timer_overflow_requests_interrupt() {
+        let mut bus = test_bus();
+
+        // Timer enabled, 16 T-cycles per increment.
+        bus.write8(0xFF07, 0x05);
+
+        // Overflow on the first increment.
+        bus.write8(0xFF05, 0xFF);
+
+        // Reload TIMA with 0x42.
+        bus.write8(0xFF06, 0x42);
+
+        // Clear interrupt requests.
+        bus.write8(0xFF0F, 0);
+
+        // After 16 cycles, TIMA overflows to zero.
+        bus.advance_cycles(16);
+
+        assert_eq!(bus.read8(0xFF05), 0);
+        assert_eq!(bus.read8(0xFF0F) & 0x04, 0);
+
+        // Three more cycles: still pending.
+        bus.advance_cycles(3);
+
+        assert_eq!(bus.read8(0xFF0F) & 0x04, 0);
+
+        // Fourth cycle: reload and interrupt.
+        bus.advance_cycles(1);
+
+        assert_eq!(bus.read8(0xFF05), 0x42);
+        assert_eq!(bus.read8(0xFF0F) & 0x04, 0x04);
+    }
+
+    #[test]
+    fn timer_interrupt_flag_can_be_cleared() {
+        let mut bus = test_bus();
+
+        bus.write8(0xFF07, 0x05);
+        bus.write8(0xFF05, 0xFF);
+        bus.write8(0xFF0F, 0);
+
+        bus.advance_cycles(20);
+
+        assert_ne!(bus.read8(0xFF0F) & 0x04, 0);
+
+        bus.write8(0xFF0F, 0);
+
+        assert_eq!(bus.read8(0xFF0F) & 0x04, 0);
+    }
+
+    #[test]
+    fn div_continues_while_lcd_is_disabled() {
+        let mut bus = test_bus();
+
+        bus.write8(0xFF40, 0);
+        bus.advance_cycles(512);
+
+        assert_eq!(bus.read8(0xFF04), 2);
+        assert_eq!(bus.read8(0xFF44), 0);
     }
 }

@@ -119,7 +119,8 @@
 #![warn(missing_docs)]
 
 /// Game Boy memory bus and address mapping.
-pub mod bus;
+mod bus;
+mod timer;
 
 use rookery_common::{
     AudioBuffer, Buttons, ClockError, Framebuffer, Machine, MachineKind, StereoSample,
