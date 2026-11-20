@@ -19,7 +19,7 @@ mod registers;
 mod tests;
 
 pub use bus::Bus;
-pub use cpu::{CpuError, CpuStatus, Sm83, StepResult};
+pub use cpu::{CpuError, CpuStatus, Sm83, StepKind, StepResult};
 pub use instruction::{
     Address8, AluOp, CbOperation, Condition, Instruction, Opcode, Operand8, Register8, Register16,
     RotateKind, Source8,

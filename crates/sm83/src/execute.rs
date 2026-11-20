@@ -156,6 +156,7 @@ impl Sm83 {
             Instruction::ReturnInterrupt => {
                 self.registers.pc = self.pop(bus);
                 self.control.ime = true;
+                self.control.ime_enable_delay = 0; // Unlike EI, RETI enables interrupts immediately.
                 16
             }
             Instruction::Reset(addr) => {
@@ -220,7 +221,7 @@ impl Sm83 {
                             value & !mask
                         };
                         self.write_operand(bus, target, result);
-                        if target.is_memory() { 16 } else { 12 }
+                        if target.is_memory() { 16 } else { 8 }
                     }
                     CbOperation::Rotate(kind) => {
                         let (result, flags) = alu::rotate(value, self.registers.f, kind, true);
@@ -237,9 +238,26 @@ impl Sm83 {
                 }
             }
 
+            Instruction::EnableInterrupts => {
+                // EI takes effect after the NEXT instruction.
+                self.control.ime_enable_delay = 2;
+                4
+            }
             Instruction::DisableInterrupts => {
+                // DI takes effect immediately and cancels EI.
                 self.control.ime = false;
                 self.control.ime_enable_delay = 0;
+                4
+            }
+            Instruction::Halt => {
+                if !self.control.ime && bus.pending_interrupts() != 0 {
+                    // HALT bug: IME is disabled but an enabled interrupt is already pending.
+                    // The next opcode fetch will NOT increment PC, and the CPU does not HALT.
+                    self.control.halt_bug = true;
+                    self.control.halted = false;
+                } else {
+                    self.control.halted = true;
+                }
                 4
             }
         }

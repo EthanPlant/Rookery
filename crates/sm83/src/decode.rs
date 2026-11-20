@@ -137,7 +137,9 @@ impl Sm83 {
             0xF8 => Instruction::StoreOffsetStackPointer(self.fetch8(bus) as i8),
             0xF9 => Instruction::LoadStackPointerHl,
 
+            0xFB => Instruction::EnableInterrupts,
             0xF3 => Instruction::DisableInterrupts,
+            0x76 => Instruction::Halt,
 
             0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
                 return Err(CpuError::Illegal { pc, opcode: code });

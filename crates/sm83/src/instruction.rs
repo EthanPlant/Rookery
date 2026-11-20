@@ -104,8 +104,12 @@ pub enum Instruction {
         /// Target for the operation.
         target: Operand8,
     },
+    /// Enable interrupts.
+    EnableInterrupts,
     /// Disable interrupts.
     DisableInterrupts,
+    /// Enter the CPU's lower-power HALT state.
+    Halt,
 }
 
 impl fmt::Display for Instruction {
@@ -182,7 +186,9 @@ impl fmt::Display for Instruction {
                 CbOperation::Res(bit) => write!(f, "RES {bit}, target"),
                 CbOperation::Set(bit) => write!(f, "SET {bit}, target"),
             },
+            Self::EnableInterrupts => f.write_str("EI"),
             Self::DisableInterrupts => f.write_str("DI"),
+            Self::Halt => f.write_str("HALT"),
         }
     }
 }

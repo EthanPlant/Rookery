@@ -41,7 +41,7 @@ impl GbBus {
     /// All writeable memory and placeholder I/O registers are intially cleared to 0xFF.
     pub fn new(cartridge: Rom) -> Self {
         let mut io = [0xFF; 0x80];
-        io[0x0F] = 0;
+        io[0x0F] = 0; // Initialize IF to zero pending interrupts.
 
         Self {
             cartridge,
@@ -79,7 +79,6 @@ impl GbBus {
     pub fn advance_cycles(&mut self, cycles: u32) {
         if self.timer.tick(cycles) {
             // Request timer interrupt.
-            tracing::debug!("Timer interrupt");
             self.io[0x0F] |= 0x04;
         }
 
@@ -180,7 +179,7 @@ impl sm83::Bus for GbBus {
                 }
             }
             0xFF04..=0xFF07 => self.timer.write(address, value),
-            0xFF0F => self.io[0x0F] = value & 0x15,
+            0xFF0F => self.io[0x0F] = value & 0x1F,
             0xFF44 => {
                 warn!("Attempted to write to read-only LY register")
             }
@@ -196,6 +195,14 @@ impl sm83::Bus for GbBus {
             0xFF80..=0xFFFE => self.hram[usize::from(address - 0xFF80)] = value,
             0xFFFF => self.ie = value,
         }
+    }
+
+    fn pending_interrupts(&self) -> u8 {
+        self.ie & self.io[0x0F] & 0x1F
+    }
+
+    fn acknowledge_interrupt(&mut self, mask: u8) {
+        self.io[0x0F] &= !mask
     }
 }
 

@@ -357,11 +357,25 @@ fn execute_gb(
         }
 
         if let Some(sink) = trace_sink.as_deref_mut() {
-            let disassembly = step.instruction.to_string();
+            let (opcode, disassembly) = match step.kind {
+                sm83::StepKind::Instruction {
+                    opcode,
+                    instruction,
+                } => {
+                    let opcode = match opcode {
+                        sm83::Opcode::Base(code) => u32::from(code),
+                        sm83::Opcode::Cb(code) => 0xCB00 | u32::from(code),
+                    };
 
-            let opcode = match step.opcode {
-                sm83::Opcode::Base(code) => u32::from(code),
-                sm83::Opcode::Cb(code) => 0xCB00 | u32::from(code),
+                    (opcode, instruction.to_string())
+                }
+
+                sm83::StepKind::Interrupt { vector } => {
+                    // Synthetic trace marker, not an SM83 opcode.
+                    (0x1_0000, format!("IRQ ${vector:04X}"))
+                }
+
+                sm83::StepKind::Halted => (0x2_0000, String::from("HALT")),
             };
 
             let record = InstructionRecord {
@@ -374,7 +388,7 @@ fn execute_gb(
             };
 
             sink.record(&record)
-                .context("writing SM83 instruction trace")?;
+                .context("writing SM83 instruction traace")?;
         }
 
         instructions += 1;

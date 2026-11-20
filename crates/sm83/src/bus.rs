@@ -9,4 +9,10 @@ pub trait Bus {
 
     /// Write a byte through the CPU bus.
     fn write8(&mut self, address: u16, value: u8);
+
+    /// Returns enabled and requested interrupts.
+    fn pending_interrupts(&self) -> u8;
+
+    /// Acknowledges an interrupt by clearing its IF bit.
+    fn acknowledge_interrupt(&mut self, mask: u8);
 }

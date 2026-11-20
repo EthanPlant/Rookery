@@ -61,6 +61,24 @@ impl Sm83 {
     ///
     /// Returns [`CpuError`] for an illegal or unimplemented opcode.
     pub fn step_with_trace<B: Bus>(&mut self, bus: &mut B) -> Result<StepResult, CpuError> {
+        let pending = bus.pending_interrupts() & 0x1F;
+
+        if self.control.halted {
+            if pending == 0 {
+                return Ok(StepResult {
+                    pc: self.registers.pc,
+                    kind: StepKind::Halted,
+                    cycles: 4,
+                });
+            }
+
+            self.control.halted = false;
+        }
+
+        if self.control.ime && pending != 0 {
+            return Ok(self.service_interrupt(bus, pending));
+        }
+
         let start_pc = self.registers.pc;
         let decoded = match self.decode(bus) {
             Ok(decoded) => decoded,
@@ -69,11 +87,27 @@ impl Sm83 {
                 return Err(e);
             }
         };
+
+        let enable_ime_after_instruction = self.control.ime_enable_delay == 1;
+
         let cycles = self.execute(bus, decoded.instruction);
+
+        if enable_ime_after_instruction
+            && !matches!(decoded.instruction, Instruction::DisableInterrupts)
+        {
+            self.control.ime = true;
+        }
+
+        if self.control.ime_enable_delay > 0 {
+            self.control.ime_enable_delay -= 1;
+        }
+
         Ok(StepResult {
             pc: decoded.pc,
-            opcode: decoded.opcode,
-            instruction: decoded.instruction,
+            kind: StepKind::Instruction {
+                opcode: decoded.opcode,
+                instruction: decoded.instruction,
+            },
             cycles,
         })
     }
@@ -129,6 +163,41 @@ impl Sm83 {
         self.registers.sp = self.registers.sp.wrapping_add(1);
         u16::from_le_bytes([low, high])
     }
+
+    fn service_interrupt<B: Bus>(&mut self, bus: &mut B, pending: u8) -> StepResult {
+        // Lower interrupt bits have higher priority.
+        let bit = pending.trailing_zeros() as u8;
+
+        let mask = 1 << bit;
+        let vector = 0x0040 + u16::from(bit) * 8;
+
+        let pc = self.registers.pc;
+
+        // Normally, an interrupt returns to the next instruction.
+        // If EI; HALT triggered the HALT bug, the return address
+        // is instead the HALT instruction itself.
+        let return_pc = if self.control.halt_bug {
+            pc.wrapping_sub(1)
+        } else {
+            pc
+        };
+
+        self.control.ime = false;
+        self.control.ime_enable_delay = 0;
+        self.control.halted = false;
+        self.control.halt_bug = false;
+
+        bus.acknowledge_interrupt(mask);
+
+        self.push(bus, return_pc);
+        self.registers.pc = vector;
+
+        StepResult {
+            pc,
+            kind: StepKind::Interrupt { vector },
+            cycles: 20,
+        }
+    }
 }
 
 /// An illegal or not-yet-supported SM83 opcode.
@@ -156,7 +225,7 @@ pub enum CpuError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CpuStatus {
     /// Interrupt master enable.
-    ime: bool,
+    pub ime: bool,
     /// Whether instruction executed is halted.
     pub halted: bool,
     /// Whether the processor is stopped.
@@ -165,17 +234,34 @@ pub struct CpuStatus {
     pub ime_enable_delay: u8,
 }
 
-/// Execution metadata returned after a successfully executed instruction.
+/// Execution metadata returned after a CPU step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct StepResult {
-    /// PC before instruction decoding.
+    /// PC at the beginning of the step.
     pub pc: u16,
-    /// The opcode of the executed instruction.
-    pub opcode: Opcode,
-    /// Decoded instruction with immediate operands resolved.
-    pub instruction: Instruction,
+    /// What the CPU did during this step.
+    pub kind: StepKind,
     /// CPU clock periods consumed, in T-cycles.
     pub cycles: u32,
+}
+
+/// The type of operation completed by a CPU step.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepKind {
+    /// A decoded instruction was executed.
+    Instruction {
+        /// The fetched opcode.
+        opcode: Opcode,
+        /// The decoded instruction.
+        instruction: Instruction,
+    },
+    /// An interrupt was serviced.
+    Interrupt {
+        /// Interrupt handler address.
+        vector: u16,
+    },
+    /// The CPU spent four T-cycles halted.
+    Halted,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
