@@ -133,11 +133,6 @@ use tracing::warn;
 
 use crate::bus::GbBus;
 
-/// Native Game Boy display width, in pixels.
-pub const SCREEN_WIDTH: usize = 160;
-/// Native Game Boy display height, in pixels.
-pub const SCREEN_HEIGHT: usize = 144;
-
 /// Base Game Boy LCD clock frequency, in hertz.
 ///
 /// The LCD timing system operates at 4,194,304 clock
@@ -315,7 +310,6 @@ pub struct GameBoy {
     cpu: Sm83,
     bus: GbBus,
 
-    framebuffer: Framebuffer,
     buttons: Buttons,
     audio: AudioBuffer,
     clock: VirtualClock,
@@ -489,6 +483,16 @@ impl GameBoy {
         &self.bus
     }
 
+    /// Number of display frames completed by the PPU.
+    pub fn frames_completed(&self) -> u64 {
+        self.bus.frames_completed()
+    }
+
+    /// Returns whether a new frame is ready to present.
+    pub fn take_frame_ready(&mut self) -> bool {
+        self.bus.take_frame_ready()
+    }
+
     fn construct(
         rom: Rom,
         model: GameBoyModel,
@@ -532,7 +536,6 @@ impl GameBoy {
             cpu,
             bus,
 
-            framebuffer: Framebuffer::new(SCREEN_WIDTH, SCREEN_HEIGHT),
             buttons: Buttons::default(),
             audio: AudioBuffer::new(48_000).expect("Sample rate is non-zero"),
             clock: VirtualClock::default(),
@@ -557,7 +560,7 @@ impl Machine for GameBoy {
     }
 
     fn framebuffer(&self) -> &Framebuffer {
-        &self.framebuffer
+        self.bus.framebuffer()
     }
 
     fn buttons(&self) -> Buttons {

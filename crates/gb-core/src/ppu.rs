@@ -1,7 +1,4 @@
-use std::sync::RwLockReadGuard;
-
 use rookery_common::{Framebuffer, Rgb};
-use tracing::Instrument;
 
 use crate::ppu::Mode::OamScan;
 

@@ -2,10 +2,10 @@
 //!
 //! Provides the address space accessed by the SM83 CPU.
 
-use rookery_common::rom::Rom;
+use rookery_common::{Framebuffer, rom::Rom};
 use tracing::{debug, info};
 
-use crate::timer::Timer;
+use crate::{ppu::Ppu, timer::Timer};
 
 /// Memory bus for the Game Boy and Game Boy Color.
 ///
@@ -29,10 +29,7 @@ pub struct GbBus {
     serial_output: Vec<u8>,
 
     timer: Timer,
-
-    // TEMP:
-    ly: u8,
-    line_cycles: u32,
+    ppu: Ppu,
 }
 
 impl GbBus {
@@ -59,9 +56,7 @@ impl GbBus {
             serial_output: Vec::new(),
 
             timer: Timer::new(),
-
-            ly: 0,
-            line_cycles: 0,
+            ppu: Ppu::new(true),
         }
     }
 
@@ -95,6 +90,7 @@ impl GbBus {
 
         bus.boot_rom = Some(boot_rom);
         bus.boot_mapped = true;
+        bus.ppu = Ppu::new(false);
 
         bus
     }
@@ -105,24 +101,25 @@ impl GbBus {
             self.io[0x0F] |= 0x04;
         }
 
-        // TEMP: Scanline simulation until the PPU exists.
-        if self.io[0x40] & 0x80 == 0 {
-            self.ly = 0;
-            self.line_cycles = 0;
-            return;
-        }
-
-        self.line_cycles += cycles;
-
-        while self.line_cycles >= 456 {
-            self.line_cycles -= 456;
-            self.ly = (self.ly + 1) % 154;
-        }
+        let interrupts = self.ppu.tick(cycles);
+        self.io[0x04] |= interrupts
     }
 
     /// Returns a reference to the loaded cartridge
     pub fn cartridge(&self) -> &Rom {
         &self.cartridge
+    }
+
+    pub fn framebuffer(&self) -> &Framebuffer {
+        self.ppu.framebuffer()
+    }
+
+    pub fn frames_completed(&self) -> u64 {
+        self.ppu.frames()
+    }
+
+    pub fn take_frame_ready(&mut self) -> bool {
+        self.ppu.take_frame_ready()
     }
 
     /// Returns whether the boot ROM is currently mapped.
@@ -169,7 +166,7 @@ impl sm83::Bus for GbBus {
             }
             0xFF04..=0xFF07 => self.timer.read(address),
             0xFF0F => self.io[0x0F] | 0xE0, // Interrupt flags: unused upper bits read as 1.
-            0xFF44 => self.ly,
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read(address),
             // I/O registers
             0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)],
             // High RAM
@@ -205,8 +202,9 @@ impl sm83::Bus for GbBus {
             }
             0xFF04..=0xFF07 => self.timer.write(address, value),
             0xFF0F => self.io[0x0F] = value & 0x1F,
-            0xFF44 => {
-                debug!("Attempted to write to read-only LY register")
+            0xFF40..=0xFF45 | 0xFF47..=0xFF4B => {
+                let interrupts = self.ppu.write(address, value);
+                self.io[0x0F] |= interrupts;
             }
             0xFF50 => {
                 // Boot ROM mapping is disabled by a nonzero write
