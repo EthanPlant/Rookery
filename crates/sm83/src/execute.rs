@@ -82,6 +82,25 @@ impl Sm83 {
                 self.registers.f = flags;
                 4
             }
+            Instruction::Complement => {
+                let (result, flags) = alu::invert(self.registers.a, self.registers.f);
+                self.registers.a = result;
+                self.registers.f = flags;
+                4
+            }
+            Instruction::SetCarry => {
+                self.registers.f &= FLAG_Z;
+                self.registers.f |= FLAG_C;
+                4
+            }
+            Instruction::InvertCarry => {
+                let carry = self.registers.f & FLAG_C != 0;
+                self.registers.f &= FLAG_Z;
+                if !carry {
+                    self.registers.f |= FLAG_C;
+                }
+                4
+            }
             Instruction::Alu { op, src } => {
                 let value = self.read_source8(bus, src);
                 let (result, flags) =

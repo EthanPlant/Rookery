@@ -44,6 +44,12 @@ pub enum Instruction {
     },
     /// Decimal adjust accumulator.
     Daa,
+    /// Invert the bits of A.
+    Complement,
+    /// Set the carry flag.
+    SetCarry,
+    /// Flip the carry flag.
+    InvertCarry,
     /// Absolute jump.
     Jump {
         /// Condition to evaluate. `None` for an unconditional jump.
@@ -122,6 +128,9 @@ impl fmt::Display for Instruction {
             Self::Dec16(dst) => write!(f, "DEC {dst}"),
             Self::AddHL(src) => write!(f, "ADD HL, {src}"),
             Self::Daa => f.write_str("DAA"),
+            Self::Complement => f.write_str("CPL"),
+            Self::SetCarry => f.write_str("SCF"),
+            Self::InvertCarry => f.write_str("CCF"),
             Self::Alu { op, src } => write!(f, "{op}, {src}"),
             Self::Jump { condition, address } => match condition {
                 Some(cond) => write!(f, "JP {cond}, ${address:04X}"),

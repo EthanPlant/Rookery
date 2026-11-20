@@ -77,6 +77,9 @@ impl Sm83 {
             0x09 | 0x19 | 0x29 | 0x39 => Instruction::AddHL(pair(code >> 4)),
 
             0x27 => Instruction::Daa,
+            0x2F => Instruction::Complement,
+            0x37 => Instruction::SetCarry,
+            0x3F => Instruction::InvertCarry,
 
             // ALU operations
             0x80..=0xBF => Instruction::Alu {

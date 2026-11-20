@@ -137,6 +137,10 @@ pub(crate) fn daa(a: u8, old_f: u8) -> (u8, u8) {
     (result, flags)
 }
 
+pub(crate) fn invert(a: u8, old_f: u8) -> (u8, u8) {
+    (!a, (old_f & FLAG_Z | FLAG_N | FLAG_H | old_f & FLAG_C))
+}
+
 pub(crate) fn rotate(value: u8, old_f: u8, kind: RotateKind, set_z: bool) -> (u8, u8) {
     let carry_in = u8::from(old_f & FLAG_C != 0);
     let (result, carry_out) = match kind {
