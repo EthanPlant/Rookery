@@ -128,6 +128,16 @@ impl Sm83 {
                     (Some(_), false) => 8,
                 }
             }
+            Instruction::ReturnInterrupt => {
+                self.registers.pc = self.pop(bus);
+                self.control.ime = true;
+                16
+            }
+            Instruction::Reset(addr) => {
+                self.push(bus, self.registers.pc);
+                self.registers.pc = addr;
+                16
+            }
 
             Instruction::Push(register) => {
                 self.push(bus, self.registers.get16(register));

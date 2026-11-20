@@ -120,6 +120,10 @@ impl Sm83 {
             0xC0 | 0xC8 | 0xD0 | 0xD8 => Instruction::Return {
                 condition: Some(Condition::from_bits(code >> 3)),
             },
+            0xD9 => Instruction::ReturnInterrupt,
+            0xC7 | 0xCF | 0xD7 | 0xDF | 0xE7 | 0xEF | 0xF7 | 0xFF => {
+                Instruction::Reset(u16::from(code & 0x38))
+            }
 
             0x08 => Instruction::StoreStackPointer(self.fetch16(bus)),
             0xC5 | 0xD5 | 0xE5 | 0xF5 => Instruction::Push(stack_pair(code >> 4)),

@@ -70,6 +70,10 @@ pub enum Instruction {
         /// Condition to evaluate. `None` for an unconditional return.
         condition: Option<Condition>,
     },
+    /// Return from interrupt
+    ReturnInterrupt,
+    /// Jump to a prefined reset vector.
+    Reset(u16),
     /// Push a register pair onto the stack.
     Push(Register16),
     /// Pop a register pair onto the stack.
@@ -129,6 +133,8 @@ impl fmt::Display for Instruction {
                 Some(cond) => write!(f, "RET {cond}"),
                 None => f.write_str("RET"),
             },
+            Self::ReturnInterrupt => f.write_str("RETI"),
+            Self::Reset(addr) => write!(f, "RST {addr:02X}"),
             Self::Push(value) => write!(f, "PUSH {value}"),
             Self::Pop(destination) => write!(f, "POP {destination}"),
             Self::StoreStackPointer(addr) => write!(f, "LD (${addr:04X}), SP"),
