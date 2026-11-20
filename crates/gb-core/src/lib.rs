@@ -657,4 +657,18 @@ mod tests {
         assert_eq!(gb.virtual_clock(), 0);
         assert_eq!(gb.cpu().registers().pc, 0x0100);
     }
+
+    #[test]
+    fn initializes_dmg_post_boot_registers() {
+        let gb = GameBoy::new(test_rom(false), GameBoyModel::Dmg).unwrap();
+
+        let registers = gb.cpu().registers();
+
+        assert_eq!(registers.af(), 0x01B0);
+        assert_eq!(registers.bc(), 0x0013);
+        assert_eq!(registers.de(), 0x00D8);
+        assert_eq!(registers.hl(), 0x014D);
+        assert_eq!(registers.sp, 0xFFFE);
+        assert_eq!(registers.pc, 0x0100);
+    }
 }

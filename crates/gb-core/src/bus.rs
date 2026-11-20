@@ -369,4 +369,69 @@ mod tests {
         assert_eq!(bus.read8(0xFF04), 2);
         assert_eq!(bus.read8(0xFF44), 0);
     }
+
+    #[test]
+    fn upper_rom_bank_is_fixed() {
+        let mut bytes = vec![0; 0x8000];
+
+        bytes[0x3FFF] = 0x12;
+        bytes[0x4000] = 0x34;
+        bytes[0x7FFF] = 0x56;
+
+        let rom = Rom::from_bytes(bytes, Some(Platform::Gb)).unwrap();
+
+        let mut bus = GbBus::new(rom);
+
+        assert_eq!(bus.read8(0x3FFF), 0x12);
+        assert_eq!(bus.read8(0x4000), 0x34);
+        assert_eq!(bus.read8(0x7FFF), 0x56);
+
+        bus.write8(0x2000, 0x05);
+        bus.write8(0x4000, 0xAA);
+
+        // ROM-only cartridges do not switch banks.
+        assert_eq!(bus.read8(0x4000), 0x34);
+        assert_eq!(bus.read8(0x7FFF), 0x56);
+    }
+
+    #[test]
+    fn echo_ram_has_correct_upper_boundary() {
+        let mut bus = test_bus();
+
+        bus.write8(0xDDFF, 0x42);
+
+        assert_eq!(bus.read8(0xFDFF), 0x42);
+
+        // DE00 is not mirrored into FE00.
+        bus.write8(0xDE00, 0x55);
+        bus.write8(0xFE00, 0xAA);
+
+        assert_eq!(bus.read8(0xDE00), 0x55);
+        assert_eq!(bus.read8(0xFE00), 0xAA);
+    }
+
+    #[test]
+    fn unusable_memory_ignores_writes() {
+        let mut bus = test_bus();
+
+        for address in 0xFEA0..=0xFEFF {
+            bus.write8(address, 0x42);
+            assert_eq!(bus.read8(address), 0xFF);
+        }
+    }
+
+    #[test]
+    fn vram_and_oam_are_independent() {
+        let mut bus = test_bus();
+
+        bus.write8(0x8000, 0x12);
+        bus.write8(0x9FFF, 0x34);
+        bus.write8(0xFE00, 0x56);
+        bus.write8(0xFE9F, 0x78);
+
+        assert_eq!(bus.read8(0x8000), 0x12);
+        assert_eq!(bus.read8(0x9FFF), 0x34);
+        assert_eq!(bus.read8(0xFE00), 0x56);
+        assert_eq!(bus.read8(0xFE9F), 0x78);
+    }
 }
