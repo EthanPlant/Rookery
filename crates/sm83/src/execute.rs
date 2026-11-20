@@ -138,6 +138,15 @@ impl Sm83 {
                 self.registers.set16(register, value);
                 12
             }
+            Instruction::StoreStackPointer(addr) => {
+                bus.write8(addr, self.registers.sp as u8);
+                bus.write8(addr.wrapping_add(1), (self.registers.sp >> 8) as u8);
+                20
+            }
+            Instruction::LoadStackPointerHl => {
+                self.registers.sp = self.registers.hl();
+                8
+            }
 
             Instruction::RotateA(kind) => {
                 let (result, flags) = alu::rotate(self.registers.a, self.registers.f, kind, false);
@@ -181,7 +190,7 @@ impl Sm83 {
                 }
             }
 
-            Instruction::Di => {
+            Instruction::DisableInterrupts => {
                 self.control.ime = false;
                 self.control.ime_enable_delay = 0;
                 4

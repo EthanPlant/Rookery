@@ -74,6 +74,11 @@ pub enum Instruction {
     Push(Register16),
     /// Pop a register pair onto the stack.
     Pop(Register16),
+    /// Store the stack pointer at an immediate address.
+    StoreStackPointer(u16),
+    /// Load the value of HL into the stack pointer.
+    LoadStackPointerHl,
+
     /// Special accumulator rotation (always clears Z).
     RotateA(RotateKind),
     /// CB-prefixed operation.
@@ -84,7 +89,7 @@ pub enum Instruction {
         target: Operand8,
     },
     /// Disable interrupts.
-    Di,
+    DisableInterrupts,
 }
 
 impl fmt::Display for Instruction {
@@ -126,6 +131,8 @@ impl fmt::Display for Instruction {
             },
             Self::Push(value) => write!(f, "PUSH {value}"),
             Self::Pop(destination) => write!(f, "POP {destination}"),
+            Self::StoreStackPointer(addr) => write!(f, "LD (${addr:04X}), SP"),
+            Self::LoadStackPointerHl => f.write_str("LD SP, HL"),
             Self::RotateA(kind) => f.write_str(match kind {
                 RotateKind::Rlc => "RLCA",
                 RotateKind::Rrc => "RRCA",
@@ -151,7 +158,7 @@ impl fmt::Display for Instruction {
                 CbOperation::Res(bit) => write!(f, "RES {bit}, target"),
                 CbOperation::Set(bit) => write!(f, "SET {bit}, target"),
             },
-            Self::Di => f.write_str("DI"),
+            Self::DisableInterrupts => f.write_str("DI"),
         }
     }
 }

@@ -121,10 +121,12 @@ impl Sm83 {
                 condition: Some(Condition::from_bits(code >> 3)),
             },
 
+            0x08 => Instruction::StoreStackPointer(self.fetch16(bus)),
             0xC5 | 0xD5 | 0xE5 | 0xF5 => Instruction::Push(stack_pair(code >> 4)),
             0xC1 | 0xD1 | 0xE1 | 0xF1 => Instruction::Pop(stack_pair(code >> 4)),
+            0xF9 => Instruction::LoadStackPointerHl,
 
-            0xF3 => Instruction::Di,
+            0xF3 => Instruction::DisableInterrupts,
 
             0xD3 | 0xDB | 0xDD | 0xE3 | 0xE4 | 0xEB | 0xEC | 0xED | 0xF4 | 0xFC | 0xFD => {
                 return Err(CpuError::Illegal { pc, opcode: code });
