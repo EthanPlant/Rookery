@@ -65,6 +65,29 @@ impl GbBus {
         }
     }
 
+    pub fn initialize_dmg_post_boot(&mut self) {
+        for (register, value) in [
+            (0x00, 0xCF), // P1
+            (0x01, 0x00), // SB
+            (0x02, 0x7E), // SC
+            (0x0F, 0x01), // IF
+            (0x40, 0x91), // LCDC
+            (0x41, 0x85), // STAT
+            (0x42, 0x00), // SCY
+            (0x43, 0x00), // SCX
+            (0x45, 0x00), // LYC
+            (0x47, 0xFC), // BGP
+            (0x48, 0xFF), // OBP0
+            (0x49, 0xFF), // OBP1
+            (0x4A, 0x00), // WY
+            (0x4B, 0x00), // WX
+        ] {
+            self.io[register] = value;
+        }
+
+        self.timer.initialize_dmg_post_boot();
+    }
+
     /// Creates a bus that begins with the given boot ROM
     /// mapped over cartridge addresses $0000-$00FF.
     pub fn with_boot_rom(cartridge: Rom, boot_rom: [u8; 0x100]) -> Self {

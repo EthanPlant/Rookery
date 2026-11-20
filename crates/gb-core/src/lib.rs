@@ -509,15 +509,23 @@ impl GameBoy {
 
         let booting = boot_rom.is_some();
 
-        let bus = match boot_rom {
+        let mut bus = match boot_rom {
             Some(bytes) => GbBus::with_boot_rom(rom, bytes),
             None => GbBus::new(rom),
         };
 
-        let cpu = Sm83::with_registers(Registers {
-            pc: if booting { 0x0000 } else { 0x0100 },
-            ..Registers::default()
-        });
+        if !booting && model == GameBoyModel::Dmg {
+            bus.initialize_dmg_post_boot();
+        }
+
+        let cpu = match (booting, model) {
+            (true, _) => Sm83::new(),
+            (false, GameBoyModel::Dmg) => Sm83::with_dmg_boot(),
+            (false, GameBoyModel::Cgb) => Sm83::with_registers(Registers {
+                pc: 0x0100,
+                ..Default::default()
+            }), // TODO: CGB post-boot state.
+        };
 
         Ok(Self {
             model,

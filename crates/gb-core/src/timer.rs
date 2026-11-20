@@ -20,6 +20,10 @@ impl Timer {
         Self::default()
     }
 
+    pub fn initialize_dmg_post_boot(&mut self) {
+        self.divider = 0xAB00;
+    }
+
     pub fn read(&self, address: u16) -> u8 {
         match address {
             0xFF04 => (self.divider >> 8) as u8,

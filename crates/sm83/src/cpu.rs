@@ -21,12 +21,12 @@ impl Sm83 {
             registers: Registers {
                 a: 0x01,
                 f: 0xB0, // Z, H, and C.
-                b: 0xFF,
+                b: 0x00,
                 c: 0x13,
                 d: 0x00,
-                e: 0xC1,
-                h: 0x84,
-                l: 0x03,
+                e: 0xD8,
+                h: 0x01,
+                l: 0x4D,
                 pc: 0x0100,
                 sp: 0xFFFE,
             },
