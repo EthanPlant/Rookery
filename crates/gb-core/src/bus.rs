@@ -23,6 +23,8 @@ pub struct GbBus {
 
     hram: [u8; 0x7F],
     ie: u8,
+    // Bytes emitted by the temporary Blargg SB/SC test protocol.
+    serial_output: Vec<u8>,
 
     // TEMP:
     ly: u8,
@@ -47,6 +49,7 @@ impl GbBus {
 
             hram: [0xFF; 0x7F],
             ie: 0,
+            serial_output: Vec::new(),
 
             ly: 0,
             line_cycles: 0,
@@ -90,6 +93,12 @@ impl GbBus {
     /// Returns whether the boot ROM is currently mapped.
     pub fn boot_rom_mapped(&self) -> bool {
         self.boot_mapped
+    }
+
+    /// Bytes emitted through Blargg's temporary SB/SC serial convention.
+    /// This is not yet a full Game Boy serial peripheral implementation.
+    pub fn serial_output(&self) -> &[u8] {
+        &self.serial_output
     }
 }
 
@@ -152,8 +161,7 @@ impl sm83::Bus for GbBus {
                 self.io[0x02] = value;
 
                 if value == 0x81 {
-                    let character = self.io[0x01] as char;
-                    print!("{character}");
+                    self.serial_output.push(self.io[0x01]);
                 }
             }
             0xFF44 => {
@@ -206,6 +214,16 @@ mod tests {
         bus.write8(0x0100, 0xFF);
 
         assert_eq!(bus.read8(0x0100), 0x3E);
+    }
+
+    #[test]
+    fn captures_blargg_serial_protocol() {
+        let mut bus = test_bus();
+        bus.write8(0xFF01, b'P');
+        bus.write8(0xFF02, 0x81);
+        bus.write8(0xFF01, b'a');
+        bus.write8(0xFF02, 0x81);
+        assert_eq!(bus.serial_output(), b"Pa");
     }
 
     #[test]

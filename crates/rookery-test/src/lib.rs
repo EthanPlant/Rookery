@@ -1,3 +1,6 @@
+/// Machine-level test-ROM runners.
+pub mod blargg;
+
 use rookery_common::{
     Platform,
     rom::{Rom, RomHeader},

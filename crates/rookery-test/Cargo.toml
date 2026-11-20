@@ -6,3 +6,13 @@ rust-version.workspace = true
 
 [dependencies]
 rookery-common = { path = "../rookery-common" }
+gb-core = { path = "../gb-core" }
+thiserror.workspace = true
+
+[features]
+# Keep `cargo test --workspace` independent of external ROM files.
+blargg-roms = []
+
+[[test]]
+name = "blargg"
+required-features = ["blargg-roms"]

@@ -270,7 +270,9 @@ dependencies = [
 name = "rookery-test"
 version = "0.1.0"
 dependencies = [
+ "gb-core",
  "rookery-common",
+ "thiserror",
 ]
 
 [[package]]

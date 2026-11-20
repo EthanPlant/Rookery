@@ -1,5 +1,6 @@
 use std::{
     fs, io,
+    io::Write,
     path::{Path, PathBuf},
 };
 
@@ -327,6 +328,9 @@ fn execute_gb(
 ) -> Result<u64> {
     let start_cycles = gb.virtual_clock();
     let mut instructions = 0;
+    let mut written_serial = gb.bus().serial_output().len();
+    // A trace sink can hold the stdout lock for the whole run.
+    let forward_serial_to_stdout = trace_sink.is_none();
     loop {
         let elapsed = gb.virtual_clock() - start_cycles;
 
@@ -343,6 +347,14 @@ fn execute_gb(
             Ok(step) => step,
             Err(e) => bail!("SM83 execution stopped: {e}"),
         };
+
+        // The core captures SB/SC bytes. Only frontends should print them.
+        let serial = gb.bus().serial_output();
+        if forward_serial_to_stdout && serial.len() > written_serial {
+            io::stdout().write_all(&serial[written_serial..])?;
+            io::stdout().flush()?;
+            written_serial = serial.len();
+        }
 
         if let Some(sink) = trace_sink.as_deref_mut() {
             let disassembly = step.instruction.to_string();
