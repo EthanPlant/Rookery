@@ -3,6 +3,7 @@
 //! Provides the address space accessed by the SM83 CPU.
 
 use rookery_common::{Framebuffer, rom::Rom};
+use sm83::Bus;
 use tracing::{debug, info};
 
 use crate::{ppu::Ppu, timer::Timer};
@@ -117,6 +118,19 @@ impl GbBus {
     pub fn serial_output(&self) -> &[u8] {
         &self.serial_output
     }
+
+    fn start_oam_dma(&mut self, source_page: u8) {
+        self.io[0x46] = source_page;
+
+        let source_base = u16::from(source_page) << 8;
+
+        for offset in 0..0xA0 {
+            let source = source_base.wrapping_add(offset);
+
+            let value = self.read8(source);
+            self.ppu.write_oam(0xFE00 + offset, value);
+        }
+    }
 }
 
 impl sm83::Bus for GbBus {
@@ -192,6 +206,7 @@ impl sm83::Bus for GbBus {
                 let interrupts = self.ppu.write(address, value);
                 self.io[0x0F] |= interrupts;
             }
+            0xFF46 => self.start_oam_dma(value),
             0xFF50 => {
                 // Boot ROM mapping is disabled by a nonzero write
                 if value != 0 {
@@ -417,5 +432,23 @@ mod tests {
         assert_eq!(bus.read8(0x9FFF), 0x34);
         assert_eq!(bus.read8(0xFE00), 0x56);
         assert_eq!(bus.read8(0xFE9F), 0x78);
+    }
+
+    #[test]
+    fn oam_dma_copies_160_bytes_from_wram() {
+        let mut bus = test_bus();
+
+        for offset in 0..0xA0u16 {
+            bus.write8(0xC100 + offset, (offset as u8).wrapping_mul(3));
+        }
+
+        // Transfer $C100–$C19F to OAM.
+        bus.write8(0xFF46, 0xC1);
+
+        for offset in 0..0xA0u16 {
+            assert_eq!(bus.read8(0xFE00 + offset), (offset as u8).wrapping_mul(3),);
+        }
+
+        assert_eq!(bus.read8(0xFF46), 0xC1);
     }
 }
