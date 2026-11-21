@@ -156,16 +156,6 @@ impl Ppu {
     pub fn write(&mut self, address: u16, value: u8) -> u8 {
         match address {
             0xFF40 => {
-                let old = self.lcdc;
-
-                if (old ^ value) & 0x80 != 0 {
-                    tracing::debug!(
-                        old = format_args!("${old:02X}"),
-                        new = format_args!("${value:02X}"),
-                        "LCD enable state changed"
-                    );
-                }
-
                 let was_enabled = self.enabled();
                 self.lcdc = value;
 

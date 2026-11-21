@@ -164,11 +164,12 @@ impl sm83::Bus for GbBus {
                 debug!("Attempted to read from illegal memory address ${address:04X}");
                 0xFF
             }
+            0xFF00 => 0xFF, // Temporarily stub no input pressed.
             0xFF04..=0xFF07 => self.timer.read(address),
             0xFF0F => self.io[0x0F] | 0xE0, // Interrupt flags: unused upper bits read as 1.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read(address),
             // I/O registers
-            0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)],
+            0xFF01..=0xFF7F => self.io[usize::from(address - 0xFF00)],
             // High RAM
             0xFF80..=0xFFFE => self.hram[usize::from(address - 0xFF80)],
             // Interrupt enable register
