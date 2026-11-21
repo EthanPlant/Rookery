@@ -49,6 +49,9 @@ pub struct Ppu {
     stat_line: bool,
     frame_ready: bool,
     frames: u64,
+
+    window_line: u8,
+    window_y_triggered: bool,
 }
 
 impl Ppu {
@@ -86,6 +89,12 @@ impl Ppu {
             stat_line: false,
             frame_ready: false,
             frames: 0,
+
+            window_line: 0,
+
+            // With the LCD already running in our post-boot state,
+            // the initial line 0 has matched the default WY=0.
+            window_y_triggered: lcd_enabled,
         }
     }
 
@@ -104,6 +113,7 @@ impl Ppu {
                     OAM_END => self.mode = Mode::Transfer,
                     TRANSFER_END => {
                         self.render_background_line();
+                        self.render_window_line();
                         self.render_objects_line();
                         self.mode = Mode::HBlank;
                     }
@@ -125,6 +135,8 @@ impl Ppu {
                 self.dot = 0;
                 self.line = (self.line + 1) % 154;
                 self.ly = self.line;
+
+                self.enter_window_scanline();
 
                 match self.line {
                     0..=143 => self.mode = OamScan,
@@ -178,12 +190,16 @@ impl Ppu {
                     self.stat_line = false;
                     self.frame_ready = false;
                     self.framebuffer.clear(WHITE);
+                    self.window_line = 0;
+                    self.window_y_triggered = false;
                 } else if !was_enabled && self.enabled() {
                     self.line = 0;
                     self.ly = 0;
                     self.dot = 0;
                     self.mode = Mode::OamScan;
                     self.stat_line = false;
+                    self.window_line = 0;
+                    self.window_y_triggered = self.wy == 0;
 
                     return self.update_stat_line();
                 }
@@ -234,7 +250,7 @@ impl Ppu {
             }
 
             0xFF4B => {
-                self.wx = 0;
+                self.wx = value;
                 0
             }
 
@@ -313,39 +329,12 @@ impl Ppu {
         } else {
             0x1800
         };
-        let unsigned_tiles = self.lcdc & 0x10 != 0;
         let bg_y = self.scy.wrapping_add(self.line);
-
-        let tile_row = usize::from(bg_y / 8);
-        let pixel_y = usize::from(bg_y % 8);
 
         for (x, pixel) in row.iter_mut().enumerate() {
             let bg_x = self.scx.wrapping_add(x as u8);
 
-            let tile_column = usize::from(bg_x / 8);
-            let pixel_x = bg_x % 8;
-
-            let map_offset = map_base + tile_row * 32 + tile_column;
-            let tile_id = self.vram[map_offset];
-
-            let tile_base = if unsigned_tiles {
-                usize::from(tile_id) * 16
-            } else {
-                let signed_id = i32::from(tile_id as i8);
-
-                (0x1000 + signed_id * 16) as usize
-            };
-
-            let data_offset = tile_base + pixel_y * 2;
-
-            let low = self.vram[data_offset];
-            let high = self.vram[data_offset + 1];
-
-            let shift = 7 - pixel_x;
-            let low_bit = (low >> shift) & 1;
-            let high_bit = (high >> shift) & 1;
-
-            let color_id = low_bit | (high_bit << 1);
+            let color_id = tile_color(&self.vram, self.lcdc, map_base, bg_x, bg_y);
             self.bg_color_ids[x] = color_id; // Preserve the original 2bpp colour index for sprite priority.
 
             let shade_id = (self.bgp >> (color_id * 2)) & 0x03;
@@ -357,6 +346,61 @@ impl Ppu {
                 b: shade,
             };
         }
+    }
+
+    fn render_window_line(&mut self) {
+        if self.line >= 144 {
+            return;
+        }
+
+        if self.lcdc & 0x21 != 0x21 {
+            return;
+        }
+
+        if !self.window_y_triggered {
+            return;
+        }
+
+        if self.ly > 143 || self.wx > 166 {
+            return;
+        }
+
+        let window_start_x = i16::from(self.wx) - 7; // WX is offset by 7 pixels.
+        let first_pixel = window_start_x.max(0) as usize;
+
+        if first_pixel >= WIDTH {
+            return;
+        }
+
+        let map_base = if self.lcdc & 0x40 != 0 {
+            0x1C00
+        } else {
+            0x1800
+        };
+
+        // This is NOT LY - WY.
+        // The window advances only when it actually draws pixels.
+        let window_y = self.window_line;
+
+        let row_start = usize::from(self.line) * WIDTH;
+        let row = &mut self.framebuffer.pixels_mut()[row_start..row_start + WIDTH];
+
+        (first_pixel..WIDTH).for_each(|screen_x| {
+            let window_x = (screen_x as i16 - window_start_x) as u8;
+            let color_id = tile_color(&self.vram, self.lcdc, map_base, window_x, window_y);
+            self.bg_color_ids[screen_x] = color_id;
+
+            let shade_id = (self.bgp >> (color_id * 2)) & 0x03;
+            let shade = DMG_SHADES[usize::from(shade_id)];
+
+            row[screen_x] = Rgb {
+                r: shade,
+                g: shade,
+                b: shade,
+            };
+        });
+
+        self.window_line += 1;
     }
 
     fn render_objects_line(&mut self) {
@@ -461,6 +505,21 @@ impl Ppu {
             }
         }
     }
+
+    fn enter_window_scanline(&mut self) {
+        if self.line == 144 {
+            self.window_y_triggered = false;
+        }
+
+        if self.line == 0 {
+            self.window_line = 0;
+            self.window_y_triggered = false;
+        }
+
+        if self.line < 144 && self.line == self.wy {
+            self.window_y_triggered = true;
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -470,6 +529,32 @@ enum Mode {
     VBlank = 1,
     OamScan = 2,
     Transfer = 3,
+}
+
+fn tile_color(vram: &[u8; 0x2000], lcdc: u8, map_base: usize, x: u8, y: u8) -> u8 {
+    let tile_row = usize::from(y / 8);
+    let tile_column = usize::from(x / 8);
+
+    let map_offset = map_base + tile_row * 32 + tile_column;
+
+    let tile_id = vram[map_offset];
+
+    let tile_base = if lcdc & 0x10 != 0 {
+        usize::from(tile_id) * 16
+    } else {
+        let signed_id = i32::from(tile_id as i8);
+        (0x1000 + signed_id * 16) as usize
+    };
+
+    let pixel_row = usize::from(y % 8);
+    let data_offset = tile_base + pixel_row * 2;
+
+    let low = vram[data_offset];
+    let high = vram[data_offset + 1];
+
+    let shift = 7 - (x % 8);
+
+    ((low >> shift) & 1) | (((high >> shift) & 1) << 1)
 }
 
 #[cfg(test)]
@@ -489,6 +574,26 @@ mod tests {
         ppu.write(0xFF47, 0xE4);
         ppu.write(0xFF48, 0xE4);
         ppu.write(0xFF49, 0xE4);
+
+        ppu
+    }
+
+    fn window_test_ppu() -> Ppu {
+        let mut ppu = Ppu::new(false);
+
+        ppu.vram.fill(0);
+
+        // Identity DMG palette.
+        ppu.write(0xFF47, 0xE4);
+
+        // Configure before enabling the LCD so the
+        // initial WY comparison occurs with these values.
+        ppu.write(0xFF4A, 0);
+        ppu.write(0xFF4B, 7);
+
+        // LCD on, Window on, unsigned tiles,
+        // BG map $9C00, Window map $9800, BG on.
+        ppu.write(0xFF40, 0xB9);
 
         ppu
     }
@@ -756,6 +861,188 @@ mod tests {
 
         render_line(&mut ppu);
 
+        assert_eq!(pixel(&ppu, 0, 0), grey(0x55));
+    }
+
+    #[test]
+    fn window_replaces_background_at_wx_minus_seven() {
+        let mut ppu = window_test_ppu();
+
+        // Fill BG map with tile 2, Window map with tile 1.
+        ppu.vram[0x1C00..0x2000].fill(2);
+        ppu.vram[0x1800..0x1C00].fill(1);
+
+        // BG tile: colour 1.
+        ppu.write_vram(0x8020, 0xFF);
+
+        // Window tile: colour 3.
+        ppu.write_vram(0x8010, 0xFF);
+        ppu.write_vram(0x8011, 0xFF);
+
+        // Window begins at screen X=80.
+        ppu.write(0xFF4B, 87);
+
+        ppu.tick(252);
+
+        assert_eq!(pixel(&ppu, 79, 0), grey(0xAA));
+        assert_eq!(pixel(&ppu, 80, 0), grey(0x00));
+
+        assert_eq!(ppu.bg_color_ids[79], 1);
+        assert_eq!(ppu.bg_color_ids[80], 3);
+    }
+
+    #[test]
+    fn window_ignores_background_scrolling() {
+        let mut ppu = window_test_ppu();
+
+        ppu.write_vram(0x9800, 1);
+
+        // First pixel of tile 1 is colour 1.
+        ppu.write_vram(0x8010, 0x80);
+
+        // Background scroll must not affect the window.
+        ppu.write(0xFF42, 73);
+        ppu.write(0xFF43, 119);
+
+        ppu.tick(252);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xAA));
+    }
+
+    #[test]
+    fn window_begins_at_wy() {
+        let mut ppu = Ppu::new(false);
+
+        ppu.vram.fill(0);
+        ppu.write(0xFF47, 0xE4);
+        ppu.write(0xFF4A, 4);
+        ppu.write(0xFF4B, 7);
+        ppu.write(0xFF40, 0xB9);
+
+        ppu.write_vram(0x9800, 1);
+        ppu.write_vram(0x8010, 0xFF);
+
+        // Render through the first window scanline.
+        ppu.tick(456 * 4 + 252);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xFF));
+        assert_eq!(pixel(&ppu, 0, 3), grey(0xFF));
+
+        // First window row appears at LY=4.
+        assert_eq!(pixel(&ppu, 0, 4), grey(0xAA));
+        assert_eq!(ppu.window_line, 1);
+    }
+
+    #[test]
+    fn hidden_window_does_not_advance_its_line_counter() {
+        let mut ppu = window_test_ppu();
+
+        ppu.write_vram(0x9800, 1);
+
+        // Window tile row 0: colour 1.
+        ppu.write_vram(0x8010, 0x80);
+
+        // Window tile row 1: colour 2.
+        ppu.write_vram(0x8013, 0x80);
+
+        // WX=167: window is completely hidden.
+        ppu.write(0xFF4B, 167);
+
+        ppu.tick(456 * 3);
+
+        assert_eq!(ppu.window_line, 0);
+
+        // Show the window starting on scanline 3.
+        ppu.write(0xFF4B, 7);
+        ppu.tick(252);
+
+        // Despite LY=3, the first window row is drawn.
+        assert_eq!(pixel(&ppu, 0, 3), grey(0xAA));
+        assert_eq!(ppu.window_line, 1);
+
+        // Render the following scanline.
+        ppu.tick(204 + 252);
+
+        assert_eq!(pixel(&ppu, 0, 4), grey(0x55));
+        assert_eq!(ppu.window_line, 2);
+    }
+
+    #[test]
+    fn window_handles_wx_less_than_seven() {
+        let mut ppu = window_test_ppu();
+
+        // Starts at screen X=-3.
+        ppu.write(0xFF4B, 4);
+        ppu.write_vram(0x9800, 1);
+
+        // Tile 1 has colour 1 only at tile pixel X=3.
+        ppu.write_vram(0x8010, 0x10);
+
+        ppu.tick(252);
+
+        // Screen X=0 samples window pixel X=3.
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xAA));
+        assert_eq!(pixel(&ppu, 1, 0), grey(0xFF));
+    }
+
+    #[test]
+    fn window_uses_second_tile_map() {
+        let mut ppu = window_test_ppu();
+
+        // Select $9C00 for Window and $9800 for BG.
+        ppu.write(0xFF40, 0xF1);
+
+        ppu.write_vram(0x9C00, 1);
+        ppu.write_vram(0x8010, 0x80);
+
+        ppu.tick(252);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xAA));
+    }
+
+    #[test]
+    fn window_uses_signed_tile_addressing() {
+        let mut ppu = window_test_ppu();
+
+        // Clear LCDC bit 4 for signed tile IDs.
+        ppu.write(0xFF40, 0xA9);
+
+        ppu.write_vram(0x9800, 0x80);
+
+        // Signed tile -128 begins at $8800.
+        ppu.write_vram(0x8800, 0x80);
+
+        ppu.tick(252);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xAA));
+    }
+
+    #[test]
+    fn window_pixels_participate_in_sprite_priority() {
+        let mut ppu = window_test_ppu();
+
+        // Enable objects.
+        ppu.write(0xFF40, 0xBB);
+        ppu.write(0xFF48, 0xE4);
+
+        // Window tile 1 has colour index 2.
+        ppu.write_vram(0x9800, 1);
+        ppu.write_vram(0x8011, 0xFF);
+
+        // Object tile 2 has colour index 1.
+        ppu.write_vram(0x8020, 0xFF);
+
+        // Sprite at screen (0, 0), behind BG/Window.
+        ppu.write_oam(0xFE00, 16);
+        ppu.write_oam(0xFE01, 8);
+        ppu.write_oam(0xFE02, 2);
+        ppu.write_oam(0xFE03, 0x80);
+
+        ppu.tick(252);
+
+        assert_eq!(ppu.bg_color_ids[0], 2);
+
+        // Window is in front of the sprite.
         assert_eq!(pixel(&ppu, 0, 0), grey(0x55));
     }
 }
