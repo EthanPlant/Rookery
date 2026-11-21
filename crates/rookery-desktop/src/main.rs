@@ -1,3 +1,5 @@
+mod video;
+
 use std::{
     fs, io,
     io::Write,
@@ -37,6 +39,12 @@ struct Cli {
 enum Command {
     /// Inspect a ROM header.
     Inspect { rom: PathBuf },
+
+    /// Run a Game Boy in an SDL window.
+    Play {
+        #[command(flatten)]
+        load: LoadArgs,
+    },
 
     /// Initialize a machine and advance its clock.
     Run {
@@ -124,6 +132,15 @@ fn main() -> Result<()> {
                 Rom::load(&rom).with_context(|| format!("loading {}", rom.display()))?;
 
             print_rom_info(&cartridge);
+        }
+
+        Command::Play { load } => {
+            let machine = load_machine(&load)?;
+
+            match machine {
+                LoadedMachine::Gb(mut gb) => video::play(gb.as_mut())?,
+                LoadedMachine::Gba(_) => bail!("GBA video is not implemented yet"),
+            }
         }
 
         Command::Run {

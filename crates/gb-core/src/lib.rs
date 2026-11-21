@@ -132,6 +132,8 @@ use thiserror::Error;
 use tracing::warn;
 
 use crate::bus::GbBus;
+pub use crate::ppu::HEIGHT as SCREEN_HEIGHT;
+pub use crate::ppu::WIDTH as SCREEN_WIDTH;
 
 /// Base Game Boy LCD clock frequency, in hertz.
 ///

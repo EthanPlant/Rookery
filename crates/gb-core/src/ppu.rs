@@ -2,8 +2,10 @@ use rookery_common::{Framebuffer, Rgb};
 
 use crate::ppu::Mode::OamScan;
 
-const WIDTH: usize = 160;
-const HEIGHT: usize = 144;
+/// Native Game Boy display width, in pixels.
+pub const WIDTH: usize = 160;
+/// Native Game Boy display height, in pixels.
+pub const HEIGHT: usize = 144;
 
 const DOTS_PER_LINE: u16 = 456;
 const OAM_END: u16 = 80;
@@ -154,6 +156,16 @@ impl Ppu {
     pub fn write(&mut self, address: u16, value: u8) -> u8 {
         match address {
             0xFF40 => {
+                let old = self.lcdc;
+
+                if (old ^ value) & 0x80 != 0 {
+                    tracing::debug!(
+                        old = format_args!("${old:02X}"),
+                        new = format_args!("${value:02X}"),
+                        "LCD enable state changed"
+                    );
+                }
+
                 let was_enabled = self.enabled();
                 self.lcdc = value;
 
@@ -270,7 +282,7 @@ impl Ppu {
         let row = &mut self.framebuffer.pixels_mut()[start..start + WIDTH];
 
         for (x, pixel) in row.iter_mut().enumerate() {
-            let index = (x / 16 + y / 16 + self.frames as usize) % 4;
+            let index = (x / 16 + y / 16 + (self.frames as usize / 8)) % 4;
 
             let value = shades[index];
             *pixel = Rgb {
