@@ -20,6 +20,8 @@ const WHITE: Rgb = Rgb {
     b: 255,
 };
 
+const DMG_SHADES: [u8; 4] = [0xFF, 0xAA, 0x55, 0x00];
+
 #[derive(Debug, Clone)]
 pub struct Ppu {
     framebuffer: Framebuffer,
@@ -99,7 +101,7 @@ impl Ppu {
                 match self.dot {
                     OAM_END => self.mode = Mode::Transfer,
                     TRANSFER_END => {
-                        self.render_debug_line();
+                        self.render_background_line();
                         self.mode = Mode::HBlank;
                     }
                     _ => {}
@@ -192,7 +194,7 @@ impl Ppu {
             }
 
             0xFF42 => {
-                self.scy = 0;
+                self.scy = value;
                 0
             }
 
@@ -275,6 +277,73 @@ impl Ppu {
         self.stat_line = high;
 
         if rising { STAT_IRQ } else { 0 }
+    }
+
+    fn render_background_line(&mut self) {
+        let y = usize::from(self.line);
+
+        if y >= HEIGHT {
+            return;
+        }
+
+        let start = y * WIDTH;
+        let row = &mut self.framebuffer.pixels_mut()[start..start + WIDTH];
+
+        // On DMG, LCDC bit 0 disables both the BG and window.
+        // Background pixels appear white when disabled.
+        if self.lcdc & 0x01 == 0 {
+            row.fill(WHITE);
+        }
+
+        let map_base = if self.lcdc & 0x08 != 0 {
+            0x1C00
+        } else {
+            0x1800
+        };
+        let unsigned_tiles = self.lcdc & 0x10 != 0;
+        let bg_y = self.scy.wrapping_add(self.line);
+
+        let tile_row = usize::from(bg_y / 8);
+        let pixel_y = usize::from(bg_y % 8);
+
+        for (x, pixel) in row.iter_mut().enumerate() {
+            let bg_x = self.scx.wrapping_add(x as u8);
+
+            let tile_column = usize::from(bg_x / 8);
+            let pixel_x = bg_x % 8;
+
+            let map_offset = map_base + tile_row * 32 + tile_column;
+            let tile_id = self.vram[map_offset];
+
+            let tile_base = if unsigned_tiles {
+                usize::from(tile_id) * 16
+            } else {
+                let signed_id = i32::from(tile_id as i8);
+
+                (0x1000 + signed_id * 16) as usize
+            };
+
+            let data_offset = tile_base + pixel_y * 2;
+
+            let low = self.vram[data_offset];
+            let high = self.vram[data_offset + 1];
+
+            let shift = 7 - pixel_x;
+            let low_bit = (low >> shift) & 1;
+            let high_bit = (high >> shift) & 1;
+
+            let color_id = low_bit | (high_bit << 1);
+            self.bg_color_ids[x] = color_id; // Preserve the original 2bpp colour index for sprite priority.
+
+            let shade_id = (self.bgp >> (color_id * 2)) & 0x03;
+            let shade = DMG_SHADES[usize::from(shade_id)];
+
+            *pixel = Rgb {
+                r: shade,
+                g: shade,
+                b: shade,
+            };
+        }
     }
 
     fn render_debug_line(&mut self) {

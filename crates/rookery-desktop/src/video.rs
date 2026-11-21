@@ -125,7 +125,7 @@ fn present(canvas: &mut WindowCanvas, texture: &sdl3::render::Texture<'_>) -> Re
     let destination = destination_rect(output_width, output_height);
 
     canvas.set_draw_color(Color::RGB(0, 0, 0));
-    //canvas.clear();
+    canvas.clear();
 
     canvas
         .copy(texture, None, Some(destination))

@@ -89,7 +89,7 @@ impl GbBus {
         }
 
         let interrupts = self.ppu.tick(cycles);
-        self.io[0x04] |= interrupts
+        self.io[0x0F] |= interrupts
     }
 
     /// Returns a reference to the loaded cartridge
