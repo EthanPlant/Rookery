@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use gb_core::{CLOCK_HZ, CLOCKS_PER_FRAME, GameBoy};
-use rookery_common::Machine;
+use rookery_common::{Machine, Rgb};
 use sdl3::{
     event::Event,
     keyboard::Keycode,
@@ -17,7 +17,14 @@ const WIDTH: u32 = gb_core::SCREEN_WIDTH as u32;
 const HEIGHT: u32 = gb_core::SCREEN_HEIGHT as u32;
 const INITIAL_SCALE: u32 = 4;
 
-pub fn play(gb: &mut GameBoy) -> Result<()> {
+const DMG_GREEN: [[u8; 3]; 4] = [
+    [0x9B, 0xBC, 0x0F],
+    [0x8B, 0xAC, 0x0F],
+    [0x30, 0x62, 0x30],
+    [0x0F, 0x38, 0x0F],
+];
+
+pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
     let sdl = sdl3::init().map_err(|e| anyhow!("initializing SDL: {e}"))?;
 
     let video = sdl
@@ -91,7 +98,7 @@ pub fn play(gb: &mut GameBoy) -> Result<()> {
                         .iter_mut()
                         .zip(row.iter())
                     {
-                        dst.copy_from_slice(&[pixel.r, pixel.g, pixel.b]);
+                        dst.copy_from_slice(&display_color(pixel, dmg_green));
                     }
                 }
             })
@@ -132,6 +139,22 @@ fn present(canvas: &mut WindowCanvas, texture: &sdl3::render::Texture<'_>) -> Re
         .map_err(|e| anyhow!("drawing texture: {e}"))?;
     canvas.present();
     Ok(())
+}
+
+fn display_color(pixel: &Rgb, dmg_green: bool) -> [u8; 3] {
+    let original = [pixel.r, pixel.g, pixel.b];
+
+    if !dmg_green {
+        return original;
+    }
+
+    match pixel.r {
+        0xFF => DMG_GREEN[0],
+        0xAA => DMG_GREEN[1],
+        0x55 => DMG_GREEN[2],
+        0x00 => DMG_GREEN[3],
+        _ => original,
+    }
 }
 
 fn destination_rect(width: u32, height: u32) -> FRect {

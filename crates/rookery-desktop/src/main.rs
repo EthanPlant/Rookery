@@ -44,6 +44,10 @@ enum Command {
     Play {
         #[command(flatten)]
         load: LoadArgs,
+
+        /// Render DMG graphics using the classic green palette.
+        #[arg(long)]
+        dmg_green: bool,
     },
 
     /// Initialize a machine and advance its clock.
@@ -134,11 +138,17 @@ fn main() -> Result<()> {
             print_rom_info(&cartridge);
         }
 
-        Command::Play { load } => {
+        Command::Play { load, dmg_green } => {
             let machine = load_machine(&load)?;
 
             match machine {
-                LoadedMachine::Gb(mut gb) => video::play(gb.as_mut())?,
+                LoadedMachine::Gb(mut gb) => {
+                    ensure!(
+                        !dmg_green || gb.model() == GameBoyModel::Dmg,
+                        "--dmg-green requires the DMG hardware model"
+                    );
+                    video::play(gb.as_mut(), dmg_green)?
+                }
                 LoadedMachine::Gba(_) => bail!("GBA video is not implemented yet"),
             }
         }
