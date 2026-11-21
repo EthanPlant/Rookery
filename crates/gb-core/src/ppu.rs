@@ -24,6 +24,9 @@ const WHITE: Rgb = Rgb {
 pub struct Ppu {
     framebuffer: Framebuffer,
 
+    vram: [u8; 0x2000],
+    bg_color_ids: [u8; WIDTH],
+
     lcdc: u8,
     stat_select: u8,
     scy: u8,
@@ -52,6 +55,9 @@ impl Ppu {
 
         Self {
             framebuffer,
+
+            vram: [0xFF; 0x2000],
+            bg_color_ids: [0; WIDTH],
 
             lcdc: if lcd_enabled { 0x91 } else { 0x00 },
             stat_select: 0,
@@ -229,6 +235,14 @@ impl Ppu {
 
             _ => unreachable!("not a PPU register"),
         }
+    }
+
+    pub fn read_vram(&self, address: u16) -> u8 {
+        self.vram[usize::from(address - 0x8000)]
+    }
+
+    pub fn write_vram(&mut self, address: u16, value: u8) {
+        self.vram[usize::from(address - 0x8000)] = value;
     }
 
     pub fn take_frame_ready(&mut self) -> bool {

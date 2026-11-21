@@ -17,7 +17,6 @@ pub struct GbBus {
     boot_rom: Option<[u8; 0x100]>,
     boot_mapped: bool,
 
-    vram: [u8; 0x2000],
     wram: [u8; 0x2000],
     oam: [u8; 0xA0],
 
@@ -45,7 +44,6 @@ impl GbBus {
             boot_rom: None,
             boot_mapped: false,
 
-            vram: [0xFF; 0x2000],
             wram: [0xFF; 0x2000],
             oam: [0xFF; 0xA0],
 
@@ -62,20 +60,9 @@ impl GbBus {
 
     pub fn initialize_dmg_post_boot(&mut self) {
         for (register, value) in [
-            (0x00, 0xCF), // P1
             (0x01, 0x00), // SB
             (0x02, 0x7E), // SC
             (0x0F, 0x01), // IF
-            (0x40, 0x91), // LCDC
-            (0x41, 0x85), // STAT
-            (0x42, 0x00), // SCY
-            (0x43, 0x00), // SCX
-            (0x45, 0x00), // LYC
-            (0x47, 0xFC), // BGP
-            (0x48, 0xFF), // OBP0
-            (0x49, 0xFF), // OBP1
-            (0x4A, 0x00), // WY
-            (0x4B, 0x00), // WX
         ] {
             self.io[register] = value;
         }
@@ -150,7 +137,7 @@ impl sm83::Bus for GbBus {
                 .copied()
                 .unwrap_or(0xFF),
             // VRAM
-            0x8000..=0x9FFF => self.vram[usize::from(address - 0x8000)],
+            0x8000..=0x9FFF => self.ppu.read_vram(address),
             // Cartridge RAM (not implemented)
             0xA000..=0xBFFF => 0xFF,
             // Work RAM
@@ -183,7 +170,7 @@ impl sm83::Bus for GbBus {
             0x0000..=0x7FFF => debug!(
                 "Attempted to write to cartridge ROM at ${address:04X} with value {value:02X}"
             ),
-            0x8000..=0x9FFF => self.vram[usize::from(address - 0x8000)] = value,
+            0x8000..=0x9FFF => self.ppu.write_vram(address, value),
             0xA000..=0xBFFF => {}
             0xC000..=0xDFFF => self.wram[usize::from(address - 0xC000)] = value,
             0xE000..=0xFDFF => self.wram[usize::from(address - 0xE000)] = value,
