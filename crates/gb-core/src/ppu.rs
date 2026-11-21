@@ -304,6 +304,8 @@ impl Ppu {
         // Background pixels appear white when disabled.
         if self.lcdc & 0x01 == 0 {
             row.fill(WHITE);
+            self.bg_color_ids.fill(0);
+            return;
         }
 
         let map_base = if self.lcdc & 0x08 != 0 {
