@@ -18,7 +18,6 @@ pub struct GbBus {
     boot_mapped: bool,
 
     wram: [u8; 0x2000],
-    oam: [u8; 0xA0],
 
     io: [u8; 0x80],
 
@@ -45,7 +44,6 @@ impl GbBus {
             boot_mapped: false,
 
             wram: [0xFF; 0x2000],
-            oam: [0xFF; 0xA0],
 
             io,
 
@@ -145,7 +143,7 @@ impl sm83::Bus for GbBus {
             // Echo RAM
             0xE000..=0xFDFF => self.wram[usize::from(address - 0xE000)],
             // Sprite attribute memory
-            0xFE00..=0xFE9F => self.oam[usize::from(address - 0xFE00)],
+            0xFE00..=0xFE9F => self.ppu.read_oam(address),
             // Unusuable memory
             0xFEA0..=0xFEFF => {
                 debug!("Attempted to read from illegal memory address ${address:04X}");
@@ -174,7 +172,7 @@ impl sm83::Bus for GbBus {
             0xA000..=0xBFFF => {}
             0xC000..=0xDFFF => self.wram[usize::from(address - 0xC000)] = value,
             0xE000..=0xFDFF => self.wram[usize::from(address - 0xE000)] = value,
-            0xFE00..=0xFE9F => self.oam[usize::from(address - 0xFE00)] = value,
+            0xFE00..=0xFE9F => self.ppu.write_oam(address, value),
             0xFEA0..=0xFEFF => {
                 debug!(
                     "Attempted to write to illegal address ${address:04X} with value {value:02X}"

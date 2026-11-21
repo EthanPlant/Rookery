@@ -28,6 +28,7 @@ pub struct Ppu {
 
     vram: [u8; 0x2000],
     bg_color_ids: [u8; WIDTH],
+    oam: [u8; 0xA0],
 
     lcdc: u8,
     stat_select: u8,
@@ -60,6 +61,7 @@ impl Ppu {
 
             vram: [0xFF; 0x2000],
             bg_color_ids: [0; WIDTH],
+            oam: [0xFF; 0xA0],
 
             lcdc: if lcd_enabled { 0x91 } else { 0x00 },
             stat_select: 0,
@@ -102,6 +104,7 @@ impl Ppu {
                     OAM_END => self.mode = Mode::Transfer,
                     TRANSFER_END => {
                         self.render_background_line();
+                        self.render_objects_line();
                         self.mode = Mode::HBlank;
                     }
                     _ => {}
@@ -247,6 +250,14 @@ impl Ppu {
         self.vram[usize::from(address - 0x8000)] = value;
     }
 
+    pub fn read_oam(&self, address: u16) -> u8 {
+        self.oam[usize::from(address - 0xFE00)]
+    }
+
+    pub fn write_oam(&mut self, address: u16, value: u8) {
+        self.oam[usize::from(address) - 0xFE00] = value;
+    }
+
     pub fn take_frame_ready(&mut self) -> bool {
         std::mem::take(&mut self.frame_ready)
     }
@@ -346,22 +357,105 @@ impl Ppu {
         }
     }
 
-    fn render_debug_line(&mut self) {
-        let y = usize::from(self.line);
-        let start = y * WIDTH;
+    fn render_objects_line(&mut self) {
+        if self.line >= 144 || self.lcdc & 0x02 == 0 {
+            return;
+        }
 
-        let shades = [0xF0, 0xB0, 0x70, 0x30];
+        let height = if self.lcdc & 0x04 != 0 { 16 } else { 8 };
+        let line = i16::from(self.line);
 
-        let row = &mut self.framebuffer.pixels_mut()[start..start + WIDTH];
+        // OAM scan selects the first ten objects who fall on this scanline.
+        let mut selected = [0; 10];
+        let mut count = 0;
 
-        for (x, pixel) in row.iter_mut().enumerate() {
-            let index = (x / 16 + y / 16 + (self.frames as usize / 8)) % 4;
+        for index in 0..40 {
+            let base = index * 4;
+            let top = i16::from(self.oam[base]) - 16;
 
-            let value = shades[index];
-            *pixel = Rgb {
-                r: value,
-                g: value,
-                b: value,
+            if line >= top && line < top + height {
+                selected[count] = index;
+                count += 1;
+
+                if count == selected.len() {
+                    break;
+                }
+            }
+        }
+
+        selected[..count].sort_unstable_by_key(|&index| (self.oam[index * 4 + 1], index));
+
+        let row_start = usize::from(self.line) * WIDTH;
+
+        for screen_x in 0..WIDTH {
+            let x = screen_x as i16;
+
+            for &index in &selected[..count] {
+                let base = index * 4;
+
+                let obj_y = i16::from(self.oam[base]) - 16;
+                let obj_x = i16::from(self.oam[base + 1]) - 8;
+                let mut tile = self.oam[base + 2];
+                let flags = self.oam[base + 3];
+
+                let local_x = x - obj_x;
+                if !(0..8).contains(&local_x) {
+                    continue;
+                }
+
+                let mut local_y = line - obj_y;
+
+                // Y-flip mirrors the entire object.
+                if flags & 0x40 != 0 {
+                    local_y = height - 1 - local_y;
+                }
+
+                if height == 16 {
+                    tile &= 0xFE;
+                    tile += (local_y / 8) as u8;
+                }
+
+                let tile_row = (local_y % 8) as usize;
+
+                let data_offset = usize::from(tile) * 16 + tile_row * 2;
+                let low = self.vram[data_offset];
+                let high = self.vram[data_offset + 1];
+
+                // X flip
+                let bit = if flags & 0x20 != 0 {
+                    local_x as u8
+                } else {
+                    7 - local_x as u8
+                };
+
+                let colour_id = ((low >> bit) & 1) | (((high >> bit) & 1) << 1);
+                // Object colour index 0 is transparent.
+                if colour_id == 0 {
+                    continue;
+                }
+
+                let behind_bg = flags & 0x80 != 0;
+                let bg_opaque = self.lcdc & 0x01 != 0 && self.bg_color_ids[screen_x] != 0;
+
+                if !(behind_bg && bg_opaque) {
+                    let palette = if flags & 0x10 != 0 {
+                        self.obp1
+                    } else {
+                        self.obp0
+                    };
+
+                    let shade_id = (palette >> (colour_id * 2)) & 0x03;
+                    let shade = DMG_SHADES[usize::from(shade_id)];
+
+                    self.framebuffer.pixels_mut()[row_start + screen_x] = Rgb {
+                        r: shade,
+                        g: shade,
+                        b: shade,
+                    }
+                }
+
+                // A non-transparent object pixel has won priority.
+                break;
             }
         }
     }
@@ -379,6 +473,49 @@ enum Mode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sprite_test_ppu() -> Ppu {
+        let mut ppu = Ppu::new(true);
+
+        ppu.vram.fill(0);
+
+        // LCD enabled, BG enabled, OBJ enabled, 8x8 sprites,
+        // unsigned background tile addressing.
+        ppu.write(0xFF40, 0x93);
+
+        // Identity grayscale palettes.
+        ppu.write(0xFF47, 0xE4);
+        ppu.write(0xFF48, 0xE4);
+        ppu.write(0xFF49, 0xE4);
+
+        ppu
+    }
+
+    fn write_object(ppu: &mut Ppu, index: usize, y: u8, x: u8, tile: u8, flags: u8) {
+        let address = 0xFE00 + (index as u16) * 4;
+
+        ppu.write_oam(address, y);
+        ppu.write_oam(address + 1, x);
+        ppu.write_oam(address + 2, tile);
+        ppu.write_oam(address + 3, flags);
+    }
+
+    fn render_line(ppu: &mut Ppu) {
+        ppu.render_background_line();
+        ppu.render_objects_line();
+    }
+
+    fn pixel(ppu: &Ppu, x: usize, y: usize) -> Rgb {
+        ppu.framebuffer().pixels()[y * WIDTH + x]
+    }
+
+    fn grey(value: u8) -> Rgb {
+        Rgb {
+            r: value,
+            g: value,
+            b: value,
+        }
+    }
 
     #[test]
     fn mode_transitions() {
@@ -484,15 +621,139 @@ mod tests {
     }
 
     #[test]
-    fn diagnostic_renderer_writes_pixels() {
-        let mut ppu = Ppu::new(true);
+    fn object_pixel_zero_is_transparent() {
+        let mut ppu = sprite_test_ppu();
 
-        ppu.tick(252);
+        // Tile 1, first row: colour 1 followed by zeros.
+        ppu.write_vram(0x8010, 0x80);
 
-        let pixels = ppu.framebuffer().pixels();
+        // Object at screen coordinates (0, 0).
+        write_object(&mut ppu, 0, 16, 8, 1, 0);
 
-        assert_eq!(pixels.len(), 160 * 144);
-        assert_ne!(pixels[0], WHITE);
-        assert_ne!(pixels[0], pixels[16]);
+        render_line(&mut ppu);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xAA));
+        assert_eq!(pixel(&ppu, 1, 0), grey(0xFF));
+    }
+
+    #[test]
+    fn object_flip_mirrors_both_axes() {
+        let mut ppu = sprite_test_ppu();
+
+        // Only the first pixel of tile 1's last row is set.
+        ppu.write_vram(0x801E, 0x80);
+
+        // Flip horizontally and vertically.
+        write_object(&mut ppu, 0, 16, 8, 1, 0x60);
+
+        render_line(&mut ppu);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xFF));
+        assert_eq!(pixel(&ppu, 7, 0), grey(0xAA));
+    }
+
+    #[test]
+    fn sixteen_pixel_objects_use_tile_pairs() {
+        let mut ppu = sprite_test_ppu();
+
+        // Enable 8x16 objects.
+        ppu.write(0xFF40, 0x97);
+
+        // Tile 2: colour 1 in first pixel.
+        ppu.write_vram(0x8020, 0x80);
+
+        // Tile 3: colour 2 in first pixel.
+        ppu.write_vram(0x8031, 0x80);
+
+        // Odd tile index must be rounded down to 2.
+        write_object(&mut ppu, 0, 16, 8, 3, 0);
+
+        render_line(&mut ppu);
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xAA));
+
+        ppu.line = 8;
+        render_line(&mut ppu);
+
+        assert_eq!(pixel(&ppu, 0, 8), grey(0x55));
+    }
+
+    #[test]
+    fn only_first_ten_objects_on_line_are_selected() {
+        let mut ppu = sprite_test_ppu();
+
+        ppu.write_vram(0x8010, 0x80);
+
+        // Ten invisible objects at X=0. They still count
+        // against the scanline limit.
+        for index in 0..10 {
+            write_object(&mut ppu, index, 16, 0, 1, 0);
+        }
+
+        // Eleventh object would otherwise be visible.
+        write_object(&mut ppu, 10, 16, 8, 1, 0);
+
+        render_line(&mut ppu);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0xFF));
+    }
+
+    #[test]
+    fn smaller_x_coordinate_wins_on_dmg() {
+        let mut ppu = sprite_test_ppu();
+
+        // Tile 1 contains colour 1 across the row.
+        ppu.write_vram(0x8010, 0xFF);
+
+        // Tile 2 contains colour 2 across the row.
+        ppu.write_vram(0x8021, 0xFF);
+
+        // First OAM object starts at screen X=8.
+        write_object(&mut ppu, 0, 16, 16, 1, 0);
+
+        // Second object starts at screen X=4.
+        write_object(&mut ppu, 1, 16, 12, 2, 0);
+
+        render_line(&mut ppu);
+
+        // Both overlap X=8, but the second wins.
+        assert_eq!(pixel(&ppu, 8, 0), grey(0x55));
+    }
+
+    #[test]
+    fn object_priority_uses_raw_bg_colour_id() {
+        let mut ppu = sprite_test_ppu();
+
+        // BG colour 2 at X=0; BG colour 0 at X=1.
+        ppu.write_vram(0x8001, 0x80);
+
+        // Object colour 1 at X=0 and X=1.
+        ppu.write_vram(0x8010, 0xC0);
+
+        // OBJ behind nonzero BG colours.
+        write_object(&mut ppu, 0, 16, 8, 1, 0x80);
+
+        render_line(&mut ppu);
+
+        // BG wins at X=0.
+        assert_eq!(pixel(&ppu, 0, 0), grey(0x55));
+
+        // OBJ wins where BG colour index is zero.
+        assert_eq!(pixel(&ppu, 1, 0), grey(0xAA));
+    }
+
+    #[test]
+    fn object_can_use_second_palette() {
+        let mut ppu = sprite_test_ppu();
+
+        ppu.write_vram(0x8010, 0x80);
+
+        // In OBP1=$1B, colour index 1 maps to shade 2.
+        ppu.write(0xFF49, 0x1B);
+
+        write_object(&mut ppu, 0, 16, 8, 1, 0x10);
+
+        render_line(&mut ppu);
+
+        assert_eq!(pixel(&ppu, 0, 0), grey(0x55));
     }
 }
