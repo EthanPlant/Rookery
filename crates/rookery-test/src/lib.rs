@@ -1,3 +1,5 @@
+/// Headless PPU screenshot regression runner.
+pub mod acid2;
 /// Machine-level test-ROM runners.
 pub mod blargg;
 

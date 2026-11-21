@@ -9,6 +9,9 @@ rookery-common = { path = "../rookery-common" }
 gb-core = { path = "../gb-core" }
 thiserror.workspace = true
 
+[dev-dependencies]
+png = "0.18"
+
 [features]
 # Keep `cargo test --workspace` independent of external ROM files.
 blargg-roms = []
