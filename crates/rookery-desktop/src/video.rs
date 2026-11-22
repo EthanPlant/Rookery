@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context, Result, anyhow};
 use gb_core::{CLOCK_HZ, CLOCKS_PER_FRAME, GameBoy};
-use rookery_common::{Machine, Rgb};
+use rookery_common::{Button, Buttons, Machine, Rgb};
 use sdl3::{
     event::{Event, WindowEvent},
     keyboard::Keycode,
@@ -148,6 +148,37 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
                     ..
                 } if window_id == tile_map_viewer.window_id() => tile_map_viewer.mouse_left(),
 
+                Event::KeyDown {
+                    window_id,
+                    keycode: Some(keycode),
+                    repeat: false,
+                    ..
+                } if window_id == game_window_id => {
+                    if let Some(button) = key_to_button(keycode) {
+                        let mut buttons = gb.buttons();
+                        buttons.set(button, true);
+                        gb.set_buttons(buttons);
+                    }
+                }
+
+                Event::KeyUp {
+                    window_id,
+                    keycode: Some(keycode),
+                    ..
+                } if window_id == game_window_id => {
+                    if let Some(button) = key_to_button(keycode) {
+                        let mut buttons = gb.buttons();
+                        buttons.set(button, false);
+                        gb.set_buttons(buttons);
+                    }
+                }
+
+                Event::Window {
+                    window_id,
+                    win_event: WindowEvent::FocusLost,
+                    ..
+                } if window_id == game_window_id => gb.set_buttons(Buttons::default()), // Avoid stuck buttons when window loses focus
+
                 _ => {}
             }
         }
@@ -271,4 +302,19 @@ fn destination_rect(width: u32, height: u32) -> FRect {
     let y = (height as f32 / display_height) / 2.0;
 
     FRect::new(x, y, display_width, display_height)
+}
+
+fn key_to_button(key: Keycode) -> Option<Button> {
+    match key {
+        Keycode::Right => Some(Button::Right),
+        Keycode::Left => Some(Button::Left),
+        Keycode::Up => Some(Button::Up),
+        Keycode::Down => Some(Button::Down),
+        Keycode::X => Some(Button::A),
+        Keycode::Z => Some(Button::B),
+        Keycode::RShift => Some(Button::Select),
+        Keycode::Return => Some(Button::Start),
+
+        _ => None,
+    }
 }
