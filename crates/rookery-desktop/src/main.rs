@@ -1,3 +1,4 @@
+mod tile_viewer;
 mod video;
 
 use std::{

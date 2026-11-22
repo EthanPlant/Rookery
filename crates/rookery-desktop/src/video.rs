@@ -7,11 +7,13 @@ use anyhow::{Context, Result, anyhow};
 use gb_core::{CLOCK_HZ, CLOCKS_PER_FRAME, GameBoy};
 use rookery_common::{Machine, Rgb};
 use sdl3::{
-    event::Event,
+    event::{Event, WindowEvent},
     keyboard::Keycode,
     pixels::{Color, PixelFormat},
     render::{FRect, ScaleMode, WindowCanvas},
 };
+
+use crate::tile_viewer::TileViewer;
 
 const WIDTH: u32 = gb_core::SCREEN_WIDTH as u32;
 const HEIGHT: u32 = gb_core::SCREEN_HEIGHT as u32;
@@ -41,6 +43,9 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
     let mut canvas = window.into_canvas();
     let texture_creator = canvas.texture_creator();
 
+    let game_window_id = canvas.window().id();
+    let mut tile_viewer = TileViewer::new(&video, dmg_green)?;
+
     let mut texture = texture_creator
         .create_texture_streaming(PixelFormat::RGB24, WIDTH, HEIGHT)
         .map_err(|e| anyhow!("creating texture: {e}"))?;
@@ -58,11 +63,54 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
     'running: loop {
         for event in events.poll_iter() {
             match event {
-                Event::Quit { .. }
-                | Event::KeyDown {
+                Event::Quit { .. } => break 'running,
+
+                Event::Window {
+                    window_id,
+                    win_event: WindowEvent::CloseRequested,
+                    ..
+                } if window_id == game_window_id => break 'running,
+
+                Event::Window {
+                    window_id,
+                    win_event: WindowEvent::CloseRequested,
+                    ..
+                } if window_id == tile_viewer.window_id() => {
+                    tile_viewer.hide();
+                }
+
+                Event::KeyDown {
+                    keycode: Some(Keycode::F2),
+                    repeat: false,
+                    ..
+                } => tile_viewer.toggle(),
+
+                Event::KeyDown {
+                    window_id,
+                    keycode: Some(Keycode::P),
+                    repeat: false,
+                    ..
+                } if window_id == tile_viewer.window_id() => {
+                    tile_viewer.cycle_palette();
+                }
+
+                Event::KeyDown {
+                    window_id,
                     keycode: Some(Keycode::Escape),
                     ..
-                } => break 'running,
+                } if window_id == tile_viewer.window_id() => tile_viewer.hide(),
+
+                Event::MouseMotion {
+                    window_id, x, y, ..
+                } if window_id == tile_viewer.window_id() => tile_viewer.mouse_moved(x, y),
+
+                Event::Window {
+                    window_id,
+                    win_event: WindowEvent::MouseLeave,
+                    ..
+                } if window_id == tile_viewer.window_id() => {
+                    tile_viewer.mouse_left();
+                }
 
                 _ => {}
             }
@@ -76,6 +124,10 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
         while gb.virtual_clock() < next_frame_cycle {
             gb.step_instruction()?;
             frame_ready |= gb.take_frame_ready();
+        }
+
+        if tile_viewer.is_visible() {
+            tile_viewer.render(gb.debug_vram(), gb.debug_bgp())?;
         }
 
         texture

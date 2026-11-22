@@ -495,6 +495,16 @@ impl GameBoy {
         self.bus.take_frame_ready()
     }
 
+    /// Direct read-only access to the DMG tile data and maps.
+    pub fn debug_vram(&self) -> &[u8; 0x2000] {
+        self.bus.debug_vram()
+    }
+
+    /// Current DMG background palette.
+    pub fn debug_bgp(&self) -> u8 {
+        self.bus.debug_bgp()
+    }
+
     fn construct(
         rom: Rom,
         model: GameBoyModel,

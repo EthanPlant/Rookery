@@ -119,6 +119,16 @@ impl GbBus {
         &self.serial_output
     }
 
+    /// Reads VRAM without CPU bus restrictions
+    pub fn debug_vram(&self) -> &[u8; 0x2000] {
+        self.ppu.debug_vram()
+    }
+
+    /// Reads the background palette without a bus read.
+    pub fn debug_bgp(&self) -> u8 {
+        self.ppu.debug_bgp()
+    }
+
     fn start_oam_dma(&mut self, source_page: u8) {
         self.io[0x46] = source_page;
 

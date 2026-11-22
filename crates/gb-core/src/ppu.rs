@@ -286,6 +286,14 @@ impl Ppu {
         self.frames
     }
 
+    pub fn debug_vram(&self) -> &[u8; 0x2000] {
+        &self.vram
+    }
+
+    pub fn debug_bgp(&self) -> u8 {
+        self.bgp
+    }
+
     fn enabled(&self) -> bool {
         self.lcdc & 0x80 != 0
     }
