@@ -88,29 +88,6 @@
 //! The CPU does not directly own cartridge ROM, video
 //! memory, or hardware peripheral implementations.
 //!
-//! # M0 limitations
-//!
-//! The current implementation provides machine
-//! initialization and diagnostic infrastructure only.
-//!
-//! It does not yet implement:
-//!
-//! - CPU instruction execution.
-//! - Memory mapping or cartridge bank switching.
-//! - Graphics rendering or LCD timing.
-//! - Audio generation.
-//! - Hardware timer operation.
-//! - Interrupt delivery.
-//! - DMA transfers.
-//! - Hardware joypad register behavior.
-//!
-//! Advancing the virtual clock does not execute any
-//! hardware components.
-//!
-//! The CPU is initialized using its default placeholder
-//! state rather than a hardware-accurate boot or post-boot
-//! register configuration.
-//!
 //! # References
 //!
 //! - [Pan Docs](https://gbdev.io/pandocs/)
@@ -119,6 +96,7 @@
 #![warn(missing_docs)]
 
 mod bus;
+mod joypad;
 mod ppu;
 mod timer;
 
@@ -312,7 +290,6 @@ pub struct GameBoy {
     cpu: Sm83,
     bus: GbBus,
 
-    buttons: Buttons,
     audio: AudioBuffer,
     clock: VirtualClock,
 }
@@ -563,7 +540,6 @@ impl GameBoy {
             cpu,
             bus,
 
-            buttons: Buttons::default(),
             audio: AudioBuffer::new(48_000).expect("Sample rate is non-zero"),
             clock: VirtualClock::default(),
         })
@@ -591,11 +567,11 @@ impl Machine for GameBoy {
     }
 
     fn buttons(&self) -> Buttons {
-        self.buttons
+        self.bus.buttons()
     }
 
     fn set_buttons(&mut self, buttons: Buttons) {
-        self.buttons = buttons;
+        self.bus.set_buttons(buttons);
     }
 
     fn drain_audio(&mut self) -> Vec<StereoSample> {

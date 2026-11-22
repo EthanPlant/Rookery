@@ -2,11 +2,11 @@
 //!
 //! Provides the address space accessed by the SM83 CPU.
 
-use rookery_common::{Framebuffer, rom::Rom};
+use rookery_common::{Buttons, Framebuffer, rom::Rom};
 use sm83::Bus;
 use tracing::{debug, info};
 
-use crate::{ppu::Ppu, timer::Timer};
+use crate::{joypad::Joypad, ppu::Ppu, timer::Timer};
 
 /// Memory bus for the Game Boy and Game Boy Color.
 ///
@@ -29,6 +29,7 @@ pub struct GbBus {
 
     timer: Timer,
     ppu: Ppu,
+    joypad: Joypad,
 }
 
 impl GbBus {
@@ -54,6 +55,7 @@ impl GbBus {
 
             timer: Timer::new(),
             ppu: Ppu::new(true),
+            joypad: Joypad::post_boot(),
         }
     }
 
@@ -77,6 +79,7 @@ impl GbBus {
         bus.boot_rom = Some(boot_rom);
         bus.boot_mapped = true;
         bus.ppu = Ppu::new(false);
+        bus.joypad = Joypad::new();
 
         bus
     }
@@ -141,6 +144,16 @@ impl GbBus {
         self.ppu.debug_scy()
     }
 
+    pub fn buttons(&self) -> Buttons {
+        self.joypad.buttons()
+    }
+
+    pub fn set_buttons(&mut self, buttons: Buttons) {
+        if self.joypad.set_buttons(buttons) {
+            self.io[0x0F] |= 0x10;
+        }
+    }
+
     fn start_oam_dma(&mut self, source_page: u8) {
         self.io[0x46] = source_page;
 
@@ -185,7 +198,7 @@ impl sm83::Bus for GbBus {
                 debug!("Attempted to read from illegal memory address ${address:04X}");
                 0xFF
             }
-            0xFF00 => 0xFF, // Temporarily stub no input pressed.
+            0xFF00 => self.joypad.read(),
             0xFF04..=0xFF07 => self.timer.read(address),
             0xFF0F => self.io[0x0F] | 0xE0, // Interrupt flags: unused upper bits read as 1.
             0xFF40..=0xFF45 | 0xFF47..=0xFF4B => self.ppu.read(address),
@@ -214,6 +227,11 @@ impl sm83::Bus for GbBus {
                     "Attempted to write to illegal address ${address:04X} with value {value:02X}"
                 )
             }
+            0xFF00 => {
+                if self.joypad.write(value) {
+                    self.io[0x0F] |= 0x10
+                }
+            }
             // Temporary workaround for serial output for Blargg tests
             0xFF02 => {
                 self.io[0x02] = value;
@@ -237,7 +255,7 @@ impl sm83::Bus for GbBus {
                 }
                 self.io[0x50] = value;
             }
-            0xFF00..=0xFF7F => self.io[usize::from(address - 0xFF00)] = value,
+            0xFF01..=0xFF7F => self.io[usize::from(address - 0xFF00)] = value,
             0xFF80..=0xFFFE => self.hram[usize::from(address - 0xFF80)] = value,
             0xFFFF => self.ie = value,
         }
@@ -255,7 +273,7 @@ impl sm83::Bus for GbBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rookery_common::Platform;
+    use rookery_common::{Button, Platform};
     use sm83::Bus;
 
     fn test_bus() -> GbBus {
@@ -472,5 +490,94 @@ mod tests {
         }
 
         assert_eq!(bus.read8(0xFF46), 0xC1);
+    }
+
+    #[test]
+    fn joypad_is_visible_through_memory_bus() {
+        let mut bus = test_bus();
+
+        // Post-boot P1 value.
+        assert_eq!(bus.read8(0xFF00), 0xCF);
+
+        // Select directions.
+        bus.write8(0xFF00, 0x20);
+
+        let mut buttons = Buttons::new();
+        buttons.set(Button::Right, true);
+
+        bus.set_buttons(buttons);
+
+        assert_eq!(bus.read8(0xFF00), 0xEE);
+
+        // Select action buttons instead.
+        bus.write8(0xFF00, 0x10);
+
+        assert_eq!(bus.read8(0xFF00), 0xDF);
+    }
+
+    #[test]
+    fn joypad_interrupt_reaches_cpu_controller() {
+        let mut bus = test_bus();
+
+        bus.write8(0xFF00, 0x20);
+        bus.write8(0xFF0F, 0);
+
+        let mut buttons = Buttons::new();
+        buttons.set(Button::Right, true);
+
+        bus.set_buttons(buttons);
+
+        // IF receives the request.
+        assert_eq!(bus.read8(0xFF0F) & 0x10, 0x10);
+
+        // IE is still zero, so nothing is pending
+        // from the CPU's perspective.
+        assert_eq!(bus.pending_interrupts(), 0);
+
+        // Enable the joypad interrupt.
+        bus.write8(0xFFFF, 0x10);
+
+        assert_eq!(bus.pending_interrupts(), 0x10);
+
+        // Simulate CPU acknowledgement.
+        bus.acknowledge_interrupt(0x10);
+
+        assert_eq!(bus.pending_interrupts(), 0);
+        assert_eq!(bus.read8(0xFF0F) & 0x10, 0);
+
+        // Still held: no new edge.
+        bus.set_buttons(buttons);
+
+        assert_eq!(bus.read8(0xFF0F) & 0x10, 0);
+
+        // Release, then press again.
+        buttons.set(Button::Right, false);
+        bus.set_buttons(buttons);
+
+        buttons.set(Button::Right, true);
+        bus.set_buttons(buttons);
+
+        assert_eq!(bus.read8(0xFF0F) & 0x10, 0x10);
+    }
+
+    #[test]
+    fn selecting_a_held_button_requests_interrupt() {
+        let mut bus = test_bus();
+
+        // Deselect both groups.
+        bus.write8(0xFF00, 0x30);
+
+        let mut buttons = Buttons::new();
+        buttons.set(Button::Start, true);
+        bus.set_buttons(buttons);
+
+        // The unselected button must not trigger IRQ.
+        assert_eq!(bus.read8(0xFF0F) & 0x10, 0);
+
+        // Selecting the action group should trigger it.
+        bus.write8(0xFF00, 0x10);
+
+        assert_eq!(bus.read8(0xFF00), 0xD7);
+        assert_eq!(bus.read8(0xFF0F) & 0x10, 0x10);
     }
 }
