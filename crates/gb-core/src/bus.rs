@@ -129,6 +129,18 @@ impl GbBus {
         self.ppu.debug_bgp()
     }
 
+    pub fn debug_lcdc(&self) -> u8 {
+        self.ppu.debug_lcdc()
+    }
+
+    pub fn debug_scx(&self) -> u8 {
+        self.ppu.debug_scx()
+    }
+
+    pub fn debug_scy(&self) -> u8 {
+        self.ppu.debug_scy()
+    }
+
     fn start_oam_dma(&mut self, source_page: u8) {
         self.io[0x46] = source_page;
 

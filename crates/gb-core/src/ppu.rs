@@ -294,6 +294,18 @@ impl Ppu {
         self.bgp
     }
 
+    pub fn debug_lcdc(&self) -> u8 {
+        self.lcdc
+    }
+
+    pub fn debug_scx(&self) -> u8 {
+        self.scx
+    }
+
+    pub fn debug_scy(&self) -> u8 {
+        self.scy
+    }
+
     fn enabled(&self) -> bool {
         self.lcdc & 0x80 != 0
     }

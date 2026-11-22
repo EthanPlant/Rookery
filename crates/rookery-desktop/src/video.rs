@@ -13,7 +13,7 @@ use sdl3::{
     render::{FRect, ScaleMode, WindowCanvas},
 };
 
-use crate::tile_viewer::TileViewer;
+use crate::{tile_map_viewer::TileMapViewer, tile_viewer::TileViewer};
 
 const WIDTH: u32 = gb_core::SCREEN_WIDTH as u32;
 const HEIGHT: u32 = gb_core::SCREEN_HEIGHT as u32;
@@ -45,6 +45,7 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
 
     let game_window_id = canvas.window().id();
     let mut tile_viewer = TileViewer::new(&video, dmg_green)?;
+    let mut tile_map_viewer = TileMapViewer::new(&video, dmg_green)?;
 
     let mut texture = texture_creator
         .create_texture_streaming(PixelFormat::RGB24, WIDTH, HEIGHT)
@@ -75,9 +76,13 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
                     window_id,
                     win_event: WindowEvent::CloseRequested,
                     ..
-                } if window_id == tile_viewer.window_id() => {
-                    tile_viewer.hide();
-                }
+                } if window_id == tile_viewer.window_id() => tile_viewer.hide(),
+
+                Event::Window {
+                    window_id,
+                    win_event: WindowEvent::CloseRequested,
+                    ..
+                } if window_id == tile_map_viewer.window_id() => tile_viewer.hide(),
 
                 Event::KeyDown {
                     keycode: Some(Keycode::F2),
@@ -86,13 +91,24 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
                 } => tile_viewer.toggle(),
 
                 Event::KeyDown {
+                    keycode: Some(Keycode::F3),
+                    repeat: false,
+                    ..
+                } => tile_map_viewer.toggle(),
+
+                Event::KeyDown {
                     window_id,
                     keycode: Some(Keycode::P),
                     repeat: false,
                     ..
-                } if window_id == tile_viewer.window_id() => {
-                    tile_viewer.cycle_palette();
-                }
+                } if window_id == tile_viewer.window_id() => tile_viewer.cycle_palette(),
+
+                Event::KeyDown {
+                    window_id,
+                    keycode: Some(Keycode::P),
+                    repeat: false,
+                    ..
+                } if window_id == tile_map_viewer.window_id() => tile_map_viewer.cycle_palette(),
 
                 Event::KeyDown {
                     window_id,
@@ -100,17 +116,37 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
                     ..
                 } if window_id == tile_viewer.window_id() => tile_viewer.hide(),
 
+                Event::KeyDown {
+                    window_id,
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } if window_id == tile_map_viewer.window_id() => tile_viewer.hide(),
+
+                Event::KeyDown {
+                    window_id,
+                    keycode: Some(Keycode::Escape),
+                    ..
+                } if window_id == game_window_id => break 'running,
+
                 Event::MouseMotion {
                     window_id, x, y, ..
                 } if window_id == tile_viewer.window_id() => tile_viewer.mouse_moved(x, y),
+
+                Event::MouseMotion {
+                    window_id, x, y, ..
+                } if window_id == tile_map_viewer.window_id() => tile_map_viewer.mouse_moved(x, y),
 
                 Event::Window {
                     window_id,
                     win_event: WindowEvent::MouseLeave,
                     ..
-                } if window_id == tile_viewer.window_id() => {
-                    tile_viewer.mouse_left();
-                }
+                } if window_id == tile_viewer.window_id() => tile_viewer.mouse_left(),
+
+                Event::Window {
+                    window_id,
+                    win_event: WindowEvent::MouseLeave,
+                    ..
+                } if window_id == tile_map_viewer.window_id() => tile_map_viewer.mouse_left(),
 
                 _ => {}
             }
@@ -128,6 +164,16 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
 
         if tile_viewer.is_visible() {
             tile_viewer.render(gb.debug_vram(), gb.debug_bgp())?;
+        }
+
+        if tile_map_viewer.is_visible() {
+            tile_map_viewer.render(
+                gb.debug_vram(),
+                gb.debug_lcdc(),
+                gb.debug_bgp(),
+                gb.debug_scx(),
+                gb.debug_scy(),
+            )?;
         }
 
         texture

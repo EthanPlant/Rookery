@@ -505,6 +505,21 @@ impl GameBoy {
         self.bus.debug_bgp()
     }
 
+    /// Current status of the LCD.
+    pub fn debug_lcdc(&self) -> u8 {
+        self.bus.debug_lcdc()
+    }
+
+    /// Current X scroll register.
+    pub fn debug_scx(&self) -> u8 {
+        self.bus.debug_scx()
+    }
+
+    /// Current Y scroll register.
+    pub fn debug_scy(&self) -> u8 {
+        self.bus.debug_scy()
+    }
+
     fn construct(
         rom: Rom,
         model: GameBoyModel,

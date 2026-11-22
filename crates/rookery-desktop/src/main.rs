@@ -1,3 +1,4 @@
+mod tile_map_viewer;
 mod tile_viewer;
 mod video;
 
