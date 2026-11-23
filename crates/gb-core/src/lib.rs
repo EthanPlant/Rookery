@@ -96,10 +96,15 @@
 #![warn(missing_docs)]
 
 mod bus;
+mod cartridge;
 mod joypad;
 mod ppu;
 mod timer;
 
+use crate::{
+    bus::GbBus,
+    cartridge::{CartridgError, Cartridge},
+};
 use rookery_common::{
     AudioBuffer, Buttons, ClockError, Framebuffer, Machine, MachineKind, StereoSample,
     VirtualClock,
@@ -109,7 +114,6 @@ use sm83::{CpuError, Registers, Sm83, StepResult};
 use thiserror::Error;
 use tracing::warn;
 
-use crate::bus::GbBus;
 pub use crate::ppu::HEIGHT as SCREEN_HEIGHT;
 pub use crate::ppu::WIDTH as SCREEN_WIDTH;
 
@@ -228,9 +232,9 @@ pub enum GameBoyError {
     #[error("CGB-only cartridge cannot run on DMG")]
     CgbRequired,
 
-    /// The cartridge requires hardware that is not implemented yet.
-    #[error("unsupported cartridge type: ${0:02X}")]
-    UnsupportedCartridge(u8),
+    /// Cartridge hardware could not be initialized.
+    #[error(transparent)]
+    Cartridge(#[from] CartridgError),
 }
 
 /// Error that may occur while executing a Game Boy instruction.
@@ -427,7 +431,7 @@ impl GameBoy {
     /// # Ok::<(), Box<dyn std::error::Error>>(())
     /// ```
     pub fn rom(&self) -> &Rom {
-        self.bus.cartridge()
+        self.bus.cartridge().rom()
     }
 
     /// Returns an immutable reference to the SM83 CPU.
@@ -497,6 +501,23 @@ impl GameBoy {
         self.bus.debug_scy()
     }
 
+    /// Returns battery-backed RAM suitable for persistence.
+    pub fn battery_ram(&self) -> Option<&[u8]> {
+        self.bus.battery_ram()
+    }
+
+    /// Restores battery-backed RAM from a save image.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the cartridge does not support battery RAM or
+    /// if the supplied data has an incorrect size.
+    pub fn load_battery_ram(&mut self, data: &[u8]) -> Result<(), GameBoyError> {
+        self.bus
+            .load_battery_ram(data)
+            .map_err(GameBoyError::Cartridge)
+    }
+
     fn construct(
         rom: Rom,
         model: GameBoyModel,
@@ -510,16 +531,13 @@ impl GameBoy {
             return Err(GameBoyError::CgbRequired);
         }
 
-        // We currently only support ROM-only cartridges. MBC1 is a workaround for Blargg.
-        if header.cartridge_type != 0x00 && header.cartridge_type != 0x01 {
-            return Err(GameBoyError::UnsupportedCartridge(header.cartridge_type));
-        }
+        let cartridge = Cartridge::new(rom)?;
 
         let booting = boot_rom.is_some();
 
         let mut bus = match boot_rom {
-            Some(bytes) => GbBus::with_boot_rom(rom, bytes),
-            None => GbBus::new(rom),
+            Some(bytes) => GbBus::with_boot_rom(cartridge, bytes),
+            None => GbBus::new(cartridge),
         };
 
         if !booting && model == GameBoyModel::Dmg {

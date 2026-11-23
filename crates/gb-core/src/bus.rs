@@ -2,11 +2,16 @@
 //!
 //! Provides the address space accessed by the SM83 CPU.
 
-use rookery_common::{Buttons, Framebuffer, rom::Rom};
+use rookery_common::{Buttons, Framebuffer};
 use sm83::Bus;
 use tracing::{debug, info};
 
-use crate::{joypad::Joypad, ppu::Ppu, timer::Timer};
+use crate::{
+    cartridge::{CartridgError, Cartridge},
+    joypad::Joypad,
+    ppu::Ppu,
+    timer::Timer,
+};
 
 /// Memory bus for the Game Boy and Game Boy Color.
 ///
@@ -14,7 +19,7 @@ use crate::{joypad::Joypad, ppu::Ppu, timer::Timer};
 /// through the SM83's 16-bit address space.
 #[derive(Debug, Clone)]
 pub struct GbBus {
-    cartridge: Rom,
+    cartridge: Cartridge,
     boot_rom: Option<[u8; 0x100]>,
     boot_mapped: bool,
 
@@ -36,7 +41,7 @@ impl GbBus {
     /// Creates a memory bus containing the specified cartridge.
     ///
     /// All writeable memory and placeholder I/O registers are intially cleared to 0xFF.
-    pub fn new(cartridge: Rom) -> Self {
+    pub fn new(cartridge: Cartridge) -> Self {
         let mut io = [0xFF; 0x80];
         io[0x0F] = 0; // Initialize IF to zero pending interrupts.
 
@@ -73,7 +78,7 @@ impl GbBus {
 
     /// Creates a bus that begins with the given boot ROM
     /// mapped over cartridge addresses $0000-$00FF.
-    pub fn with_boot_rom(cartridge: Rom, boot_rom: [u8; 0x100]) -> Self {
+    pub fn with_boot_rom(cartridge: Cartridge, boot_rom: [u8; 0x100]) -> Self {
         let mut bus = Self::new(cartridge);
 
         bus.boot_rom = Some(boot_rom);
@@ -95,8 +100,16 @@ impl GbBus {
     }
 
     /// Returns a reference to the loaded cartridge
-    pub fn cartridge(&self) -> &Rom {
+    pub fn cartridge(&self) -> &Cartridge {
         &self.cartridge
+    }
+
+    pub fn battery_ram(&self) -> Option<&[u8]> {
+        self.cartridge.battery_ram()
+    }
+
+    pub fn load_battery_ram(&mut self, data: &[u8]) -> Result<(), CartridgError> {
+        self.cartridge.load_battery_ram(data)
     }
 
     pub fn framebuffer(&self) -> &Framebuffer {
@@ -177,16 +190,11 @@ impl sm83::Bus for GbBus {
 
         match address {
             // Cartridge ROM
-            0x0000..=0x7FFF => self
-                .cartridge
-                .bytes()
-                .get(usize::from(address))
-                .copied()
-                .unwrap_or(0xFF),
+            0x0000..=0x7FFF => self.cartridge.read(address),
             // VRAM
             0x8000..=0x9FFF => self.ppu.read_vram(address),
-            // Cartridge RAM (not implemented)
-            0xA000..=0xBFFF => 0xFF,
+            // Cartridge RAM
+            0xA000..=0xBFFF => self.cartridge.read(address),
             // Work RAM
             0xC000..=0xDFFF => self.wram[usize::from(address - 0xC000)],
             // Echo RAM
@@ -214,11 +222,9 @@ impl sm83::Bus for GbBus {
     fn write8(&mut self, address: u16, value: u8) {
         match address {
             // Cartridge ROM
-            0x0000..=0x7FFF => debug!(
-                "Attempted to write to cartridge ROM at ${address:04X} with value {value:02X}"
-            ),
+            0x0000..=0x7FFF => self.cartridge.write(address, value),
             0x8000..=0x9FFF => self.ppu.write_vram(address, value),
-            0xA000..=0xBFFF => {}
+            0xA000..=0xBFFF => self.cartridge.write(address, value),
             0xC000..=0xDFFF => self.wram[usize::from(address - 0xC000)] = value,
             0xE000..=0xFDFF => self.wram[usize::from(address - 0xE000)] = value,
             0xFE00..=0xFE9F => self.ppu.write_oam(address, value),
@@ -273,7 +279,7 @@ impl sm83::Bus for GbBus {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rookery_common::{Button, Platform};
+    use rookery_common::{Button, Platform, rom::Rom};
     use sm83::Bus;
 
     fn test_bus() -> GbBus {
@@ -284,7 +290,7 @@ mod tests {
 
         let rom = Rom::from_bytes(bytes, Some(Platform::Gb)).unwrap();
 
-        GbBus::new(rom)
+        GbBus::new(Cartridge::new(rom).unwrap())
     }
 
     #[test]
@@ -419,7 +425,7 @@ mod tests {
 
         let rom = Rom::from_bytes(bytes, Some(Platform::Gb)).unwrap();
 
-        let mut bus = GbBus::new(rom);
+        let mut bus = GbBus::new(Cartridge::new(rom).unwrap());
 
         assert_eq!(bus.read8(0x3FFF), 0x12);
         assert_eq!(bus.read8(0x4000), 0x34);
