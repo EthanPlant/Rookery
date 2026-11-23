@@ -518,6 +518,16 @@ impl GameBoy {
             .map_err(GameBoyError::Cartridge)
     }
 
+    /// Whether battery-backed SRAM contains unsaved changes
+    pub fn battery_ram_dirty(&self) -> bool {
+        self.bus.battery_ram_dirty()
+    }
+
+    /// Marks the current battery-backed SRAM as persisted
+    pub fn acknowledge_battery_save(&mut self) {
+        self.bus.acknowledge_battery_save();
+    }
+
     fn construct(
         rom: Rom,
         model: GameBoyModel,

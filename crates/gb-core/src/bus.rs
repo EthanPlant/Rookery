@@ -112,6 +112,14 @@ impl GbBus {
         self.cartridge.load_battery_ram(data)
     }
 
+    pub fn battery_ram_dirty(&self) -> bool {
+        self.cartridge.battery_ram_dirty()
+    }
+
+    pub fn acknowledge_battery_save(&mut self) {
+        self.cartridge.acknowledge_battery_save();
+    }
+
     pub fn framebuffer(&self) -> &Framebuffer {
         self.ppu.framebuffer()
     }

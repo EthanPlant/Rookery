@@ -1,3 +1,4 @@
+mod save;
 mod tile_map_viewer;
 mod tile_viewer;
 mod video;
@@ -22,6 +23,8 @@ use rookery_common::{
     },
 };
 use tracing_subscriber::EnvFilter;
+
+use crate::save::SaveManager;
 
 #[derive(Parser)]
 #[command(
@@ -149,7 +152,14 @@ fn main() -> Result<()> {
                         !dmg_green || gb.model() == GameBoyModel::Dmg,
                         "--dmg-green requires the DMG hardware model"
                     );
-                    video::play(gb.as_mut(), dmg_green)?
+
+                    let mut saves = SaveManager::load(&load.rom, gb.as_mut())?;
+
+                    let play_result = video::play(gb.as_mut(), dmg_green, &mut saves);
+                    let save_result = saves.flush(gb.as_mut());
+
+                    save_result?;
+                    play_result?;
                 }
                 LoadedMachine::Gba(_) => bail!("GBA video is not implemented yet"),
             }

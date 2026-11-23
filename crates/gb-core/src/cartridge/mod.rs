@@ -39,6 +39,7 @@ pub struct Cartridge {
     ram: Vec<u8>,
     battery: bool,
     rom_bank_mask: usize,
+    ram_dirty: bool,
 }
 
 impl Cartridge {
@@ -90,6 +91,7 @@ impl Cartridge {
             ram: vec![0xFF; ram_size],
             battery,
             rom_bank_mask,
+            ram_dirty: false,
         })
     }
 
@@ -136,6 +138,7 @@ impl Cartridge {
         }
 
         self.ram.copy_from_slice(data);
+        self.ram_dirty = false;
         Ok(())
     }
 
@@ -171,9 +174,23 @@ impl Cartridge {
     }
 
     fn write_ram(&mut self, address: u16, value: u8) {
-        if let Some(index) = self.ram_index(address) {
+        if let Some(index) = self.ram_index(address)
+            && self.ram[index] != value
+        {
             self.ram[index] = value;
+
+            if self.battery {
+                self.ram_dirty = true;
+            }
         }
+    }
+
+    pub fn battery_ram_dirty(&self) -> bool {
+        self.battery && self.ram_dirty
+    }
+
+    pub fn acknowledge_battery_save(&mut self) {
+        self.ram_dirty = false;
     }
 
     fn ram_index(&self, address: u16) -> Option<usize> {
@@ -457,5 +474,32 @@ mod tests {
             Cartridge::new(rom),
             Err(CartridgeError::UnsupportedType(0x11))
         ));
+    }
+
+    #[test]
+    fn battery_ram_is_only_dirty_after_a_change() {
+        let mut cart = make_cartridge(0x03, 32, 0x02);
+
+        assert!(!cart.battery_ram_dirty());
+
+        cart.write(0x0000, 0x0A);
+
+        assert_eq!(cart.read(0xA000), 0xFF);
+        assert!(!cart.battery_ram_dirty());
+
+        cart.write(0xA000, 0xFF);
+        assert!(!cart.battery_ram_dirty());
+
+        cart.write(0xA000, 0x42);
+        assert!(cart.battery_ram_dirty());
+
+        cart.acknowledge_battery_save();
+        assert!(!cart.battery_ram_dirty());
+
+        cart.write(0xA000, 0x42);
+        assert!(!cart.battery_ram_dirty());
+
+        cart.write(0xA000, 0x99);
+        assert!(cart.battery_ram_dirty());
     }
 }

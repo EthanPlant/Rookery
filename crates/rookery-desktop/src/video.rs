@@ -13,7 +13,7 @@ use sdl3::{
     render::{FRect, ScaleMode, WindowCanvas},
 };
 
-use crate::{tile_map_viewer::TileMapViewer, tile_viewer::TileViewer};
+use crate::{save::SaveManager, tile_map_viewer::TileMapViewer, tile_viewer::TileViewer};
 
 const WIDTH: u32 = gb_core::SCREEN_WIDTH as u32;
 const HEIGHT: u32 = gb_core::SCREEN_HEIGHT as u32;
@@ -26,7 +26,7 @@ const DMG_GREEN: [[u8; 3]; 4] = [
     [0x0F, 0x38, 0x0F],
 ];
 
-pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
+pub fn play(gb: &mut GameBoy, dmg_green: bool, saves: &mut SaveManager) -> Result<()> {
     let sdl = sdl3::init().map_err(|e| anyhow!("initializing SDL: {e}"))?;
 
     let video = sdl
@@ -192,6 +192,8 @@ pub fn play(gb: &mut GameBoy, dmg_green: bool) -> Result<()> {
             gb.step_instruction()?;
             frame_ready |= gb.take_frame_ready();
         }
+
+        saves.maybe_flush(gb)?;
 
         if tile_viewer.is_visible() {
             tile_viewer.render(gb.debug_vram(), gb.debug_bgp())?;
