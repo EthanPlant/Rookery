@@ -103,7 +103,7 @@ mod timer;
 
 use crate::{
     bus::GbBus,
-    cartridge::{CartridgError, Cartridge},
+    cartridge::{Cartridge, CartridgeError},
 };
 use rookery_common::{
     AudioBuffer, Buttons, ClockError, Framebuffer, Machine, MachineKind, StereoSample,
@@ -234,7 +234,7 @@ pub enum GameBoyError {
 
     /// Cartridge hardware could not be initialized.
     #[error(transparent)]
-    Cartridge(#[from] CartridgError),
+    Cartridge(#[from] CartridgeError),
 }
 
 /// Error that may occur while executing a Game Boy instruction.

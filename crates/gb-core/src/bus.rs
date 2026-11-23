@@ -7,7 +7,7 @@ use sm83::Bus;
 use tracing::{debug, info};
 
 use crate::{
-    cartridge::{CartridgError, Cartridge},
+    cartridge::{Cartridge, CartridgeError},
     joypad::Joypad,
     ppu::Ppu,
     timer::Timer,
@@ -108,7 +108,7 @@ impl GbBus {
         self.cartridge.battery_ram()
     }
 
-    pub fn load_battery_ram(&mut self, data: &[u8]) -> Result<(), CartridgError> {
+    pub fn load_battery_ram(&mut self, data: &[u8]) -> Result<(), CartridgeError> {
         self.cartridge.load_battery_ram(data)
     }
 
